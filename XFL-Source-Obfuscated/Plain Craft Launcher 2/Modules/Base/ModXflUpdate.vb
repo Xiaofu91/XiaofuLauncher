@@ -218,7 +218,7 @@ Module ModXflUpdate
     ''' 每次发版改这里：与 GitHub Release 的 tag（v0.75）对应。
     ''' ⚠ 发版流程里必须同步改这个常量，否则客户端认为已是最新。
     ''' </summary>
-    Private Const XflVersion As String = "0.75"
+    Private Const XflVersion As String = "0.76"
 
     ''' <summary>本机 XFL 版本（用于与 Release tag 比较）。</summary>
     Private Function CurrentVersion() As Version
