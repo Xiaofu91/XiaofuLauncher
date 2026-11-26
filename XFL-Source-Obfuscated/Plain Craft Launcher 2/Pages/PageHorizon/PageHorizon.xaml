@@ -1,0 +1,141 @@
+﻿<UserControl x:Class="PageHorizon"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:PCL"
+             mc:Ignorable="d">
+    <Grid Background="{DynamicResource ColorBrushSurfaceWindow}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="24,16,24,8">
+            <TextBlock Text="Horizon（Rust 版）" FontSize="22" FontWeight="Bold"
+                       Foreground="{DynamicResource ColorBrushTextPrimary}" />
+            <TextBlock Text="Horizon 是用 Rust 从零重写的 Minecraft Java 26.3 客户端，开启世界更快、帧数更高。它不含任何 Minecraft 文件，需要用你自己已安装的 26.3 构建游戏。"
+                       FontSize="13" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Foreground="{DynamicResource ColorBrushTextSecondary}" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="24,0,24,16">
+            <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+                <Border CornerRadius="12" BorderThickness="1" Padding="16,12"
+                        Margin="0,0,0,12" Background="{DynamicResource ColorBrushSurfaceCard}"
+                        BorderBrush="{DynamicResource ColorBrushBorderNormal}">
+                    <StackPanel>
+                        <TextBlock Text="运行环境" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource ColorBrushTextPrimary}" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" x:Name="LabEnvPremiumIcon" Text="●" FontSize="13" Margin="0,0,8,6" Width="16"
+                                       Foreground="{DynamicResource ColorBrushGray4}" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="LabEnvPremium" Text="正版账号：检测中…" FontSize="13"
+                                       Foreground="{DynamicResource ColorBrushTextSecondary}" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" x:Name="LabEnv263Icon" Text="●" FontSize="13" Margin="0,0,8,6" Width="16"
+                                       Foreground="{DynamicResource ColorBrushGray4}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LabEnv263" Text="本地 26.3 安装：检测中…" FontSize="13"
+                                       Foreground="{DynamicResource ColorBrushTextSecondary}" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" x:Name="LabEnvJdkIcon" Text="●" FontSize="13" Margin="0,0,8,0" Width="16"
+                                       Foreground="{DynamicResource ColorBrushGray4}" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LabEnvJdk" Text="JDK 25：检测中…" FontSize="13"
+                                       Foreground="{DynamicResource ColorBrushTextSecondary}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border CornerRadius="12" BorderThickness="1" Padding="16,12"
+                        Margin="0,0,0,12" Background="{DynamicResource ColorBrushSurfaceCard}"
+                        BorderBrush="{DynamicResource ColorBrushBorderNormal}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="LabInstStatus" Text="Horizon：检查中…" FontSize="14"
+                                       Foreground="{DynamicResource ColorBrushTextPrimary}" />
+                            <TextBlock x:Name="LabInstTip" Text="首次使用需要下载游戏本体（约 76MB）"
+                                       FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource ColorBrushTextTertiary}" />
+                            <ProgressBar x:Name="BarInst" Height="6" Minimum="0" Maximum="1"
+                                         Margin="0,8,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center">
+                            <local:MyButton x:Name="BtnInstall" Width="150" Height="38"
+                                            Text="下载并安装" ColorType="Highlight" CornerRadius="10"
+                                            LabelFontSize="13" Margin="0,0,0,8" />
+                            <local:MyButton x:Name="BtnCheckUpdate" Width="150" Height="32"
+                                            Text="检查更新" ColorType="Normal" CornerRadius="10"
+                                            LabelFontSize="12" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="PanPrepare" CornerRadius="12" BorderThickness="1" Padding="16,12"
+                        Margin="0,0,0,12" Background="{DynamicResource ColorBrushSurfaceCard}"
+                        BorderBrush="{DynamicResource ColorBrushBorderNormal}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="LabPrepStatus" Text="游戏资源：未准备" FontSize="14"
+                                       Foreground="{DynamicResource ColorBrushTextPrimary}" />
+                            <TextBlock Text="从你已安装的 26.3 构建 Horizon 能用的游戏文件（含 Mojang 数据导出，需要几分钟）。"
+                                       FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource ColorBrushTextTertiary}" />
+                            <ProgressBar x:Name="BarPrep" Height="6" Minimum="0" Maximum="1"
+                                         Margin="0,8,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                        <local:MyButton x:Name="BtnPrepare" Grid.Column="1" Width="150" Height="38"
+                                        Text="开始准备" ColorType="Highlight" CornerRadius="10"
+                                        LabelFontSize="13" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <Border x:Name="PanLaunch" CornerRadius="12" BorderThickness="1" Padding="16,12"
+                        Margin="0,0,0,12" Background="{DynamicResource ColorBrushSurfaceCard}"
+                        BorderBrush="{DynamicResource ColorBrushBorderNormal}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="启动 Horizon" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ColorBrushTextPrimary}" />
+                            <TextBlock Text="存档、配置都在启动器目录内，与你其他启动器的世界互不影响。"
+                                       FontSize="12" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource ColorBrushTextTertiary}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <local:MyButton x:Name="BtnLaunchCreative" Width="110" Height="38"
+                                            Text="创造模式" ColorType="Normal" CornerRadius="10"
+                                            LabelFontSize="13" Margin="0,0,8,0" />
+                            <local:MyButton x:Name="BtnLaunch" Width="150" Height="38"
+                                            Text="启动 Horizon" ColorType="Brand" CornerRadius="10"
+                                            LabelFontSize="13" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="Horizon 不是 Mojang 官方产品，与 Mojang / Microsoft 无关联。它只使用你合法拥有的 Minecraft 文件。"
+                           FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource ColorBrushTextTertiary}" />
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

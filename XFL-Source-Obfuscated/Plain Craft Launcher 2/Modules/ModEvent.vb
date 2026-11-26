@@ -1,0 +1,391 @@
+﻿
+#Region "附加属性"
+
+<Markup.ContentProperty("Events")>
+Public Class CustomEventCollection
+    Implements IEnumerable(Of CustomEvent)
+    Dim _Events As New List(Of CustomEvent)
+    Public ReadOnly Property Events As List(Of CustomEvent)
+        Get
+            Return _Events
+        End Get
+    End Property
+    Public Function GetEnumerator() As IEnumerator(Of CustomEvent) Implements IEnumerable(Of CustomEvent).GetEnumerator
+        Return DirectCast(Events, IEnumerable(Of CustomEvent)).GetEnumerator()
+    End Function
+    Private Function IEnumerable_GetEnumerator() As IEnumerator Implements IEnumerable.GetEnumerator
+        Return DirectCast(Events, IEnumerable).GetEnumerator()
+    End Function
+End Class
+
+Public Class CustomEventService
+
+    Public Shared ReadOnly EventsProperty As DependencyProperty =
+            DependencyProperty.RegisterAttached("Events", GetType(CustomEventCollection), GetType(CustomEventService), New PropertyMetadata(Nothing))
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Sub SetEvents(d As DependencyObject, value As CustomEventCollection)
+        d.SetValue(EventsProperty, value)
+    End Sub
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Function GetEvents(d As DependencyObject) As CustomEventCollection
+        If d.GetValue(EventsProperty) Is Nothing Then d.SetValue(EventsProperty, New CustomEventCollection)
+        Return d.GetValue(EventsProperty)
+    End Function
+
+    Public Shared ReadOnly EventTypeProperty As DependencyProperty =
+            DependencyProperty.RegisterAttached("EventType", GetType(CustomEvent.EventType), GetType(CustomEventService), New PropertyMetadata(Nothing))
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Sub SetEventType(d As DependencyObject, value As CustomEvent.EventType)
+        d.SetValue(EventTypeProperty, value)
+    End Sub
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Function GetEventType(d As DependencyObject) As CustomEvent.EventType
+        Return d.GetValue(EventTypeProperty)
+    End Function
+
+    Public Shared ReadOnly EventDataProperty As DependencyProperty =
+            DependencyProperty.RegisterAttached("EventData", GetType(String), GetType(CustomEventService), New PropertyMetadata(Nothing))
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Sub SetEventData(d As DependencyObject, value As String)
+        d.SetValue(EventDataProperty, value)
+    End Sub
+    <AttachedPropertyBrowsableForType(GetType(DependencyObject))>
+    Public Shared Function GetEventData(d As DependencyObject) As String
+        Return d.GetValue(EventDataProperty)
+    End Function
+
+End Class
+
+Partial Public Module ModMain
+
+    <Runtime.CompilerServices.Extension>
+    Public Sub RaiseCustomEvent(Control As DependencyObject)
+
+        Dim Events = CustomEventService.GetEvents(Control).ToList
+        Dim EventType = CustomEventService.GetEventType(Control)
+        If EventType <> CustomEvent.EventType.None Then Events.Add(New CustomEvent(EventType, CustomEventService.GetEventData(Control)))
+
+        If Not Events.Any Then Return
+        RunInNewThread(
+        Sub()
+            For Each e In Events
+                e.Raise()
+            Next
+        End Sub, "执行自定义事件 " & GetUuid())
+    End Sub
+
+End Module
+
+#End Region
+
+Public Class CustomEvent
+    Inherits DependencyObject
+
+#Region "属性与触发"
+
+    Public Property Type As EventType
+        Get
+            Dim Value As EventType = EventType.None
+            RunInUiWait(Sub() Value = GetValue(TypeProperty))
+            Return Value
+        End Get
+        Set(value As EventType)
+            SetValue(TypeProperty, value)
+        End Set
+    End Property
+    Public Shared ReadOnly TypeProperty As DependencyProperty =
+        DependencyProperty.Register("Type", GetType(EventType), GetType(CustomEvent), New PropertyMetadata(EventType.None))
+
+    Public Property Data As String
+        Get
+            Dim Value As String = Nothing
+            RunInUiWait(Sub() Value = GetValue(DataProperty))
+            Return Value
+        End Get
+        Set(value As String)
+            SetValue(DataProperty, value)
+        End Set
+    End Property
+    Public Shared ReadOnly DataProperty As DependencyProperty =
+        DependencyProperty.Register("Data", GetType(String), GetType(CustomEvent), New PropertyMetadata(Nothing))
+
+    Public Sub New()
+    End Sub
+    Public Sub New(Type As EventType, Data As String)
+        Me.Type = Type
+        Me.Data = Data
+    End Sub
+
+    Public Sub Raise()
+        Raise(Type, Data)
+    End Sub
+
+#End Region
+
+    Public Enum EventType
+        None = 0
+        打开网页
+        打开文件
+        打开帮助
+        执行命令
+        启动游戏
+        复制文本
+        刷新主页
+        刷新页面
+        刷新帮助
+        今日人品
+        内存优化
+        清理垃圾
+        弹出窗口
+        弹出提示
+        切换页面
+        导入整合包
+        安装整合包
+        下载文件
+        修改设置
+        写入设置
+        修改变量
+        写入变量
+        加入房间
+        检查更新
+    End Enum
+
+    Public Shared Sub Raise(Type As EventType, Arg As String)
+        If Type = EventType.None Then Return
+        Logger.Info($"执行自定义事件：{Type}, {Arg}")
+        If Arg Is Nothing Then Arg = ""
+        Dim Args As String() = Arg.Split("|")
+        Try
+            Select Case Type
+                Case EventType.打开网页
+                    Arg = Arg.Replace("\", "/")
+                    If Not Arg.Contains("://") OrElse Arg.StartsWithF("file", True) Then
+                        MyMsgBox(GetLang("LangModEventDialogWebIncorrectContent"), GetLang("LangModEventDialogEventFailTitle"))
+                        Return
+                    End If
+                    Hint(GetLang("LangModEventOpeningWebWithUrl", Arg))
+                    RunInThread(Sub() OpenWebsite(Arg))
+
+                Case EventType.打开文件, EventType.打开帮助, EventType.执行命令
+                    RunInThread(
+                    Sub()
+                        Try
+
+                            Dim ActualPaths = GetAbsoluteUrls(Args(0), Type)
+                            Dim Location = ActualPaths(0), WorkingDir = ActualPaths(1)
+                            Logger.Info($"打开类自定义事件实际路径：{Location}，工作目录：{WorkingDir}")
+
+                            If Type = EventType.打开帮助 Then
+                                PageOtherHelp.EnterHelpPage(Location)
+                            Else
+                                If Not EventSafetyConfirm("即将执行：" & Location & If(Args.Length >= 2, " " & Args(1), "")) Then Return
+                                Dim Info As New ProcessStartInfo With {
+                                    .Arguments = If(Args.Length >= 2, Args(1), ""),
+                                    .FileName = Location,
+                                    .WorkingDirectory = WorkingDir
+                                }
+                                StartProcess(Info)
+                            End If
+                        Catch ex As Exception
+                            Logger.Error(ex, "执行打开类自定义事件失败", LogBehavior.Alert)
+                        End Try
+                    End Sub)
+
+                Case EventType.启动游戏
+                    If Args(0) = "\current" Then
+                        If McInstanceSelected Is Nothing Then
+                            Hint(GetLang("LangModEventChoseAnInstance"), HintType.Red)
+                            Return
+                        Else
+                            Args(0) = McInstanceSelected.Name
+                        End If
+                    End If
+                    RunInUi(
+                    Sub()
+                        If McLaunchStart(New McLaunchOptions With
+                                {.ServerIp = If(Args.Length >= 2, Args(1), Nothing), .Instance = New McInstance(Args(0))}) Then
+                            Hint(GetLang("LangModEventStartInstance", Args(0)))
+                        End If
+                    End Sub)
+
+                Case EventType.复制文本
+                    ClipboardSet(Arg)
+
+                Case EventType.刷新主页
+                    RunInUi(
+                    Sub()
+                        FrmLaunchRight.ForceRefresh()
+            If String.IsNullOrEmpty(Arg) Then Hint(GetLang("LangRefreshed"), HintType.Green)
+                    End Sub)
+
+                Case EventType.刷新页面
+                    If TypeOf FrmMain.PageRight Is IRefreshable Then
+                        RunInUiWait(Sub() CType(FrmMain.PageRight, IRefreshable).Refresh())
+                        If String.IsNullOrEmpty(Arg) Then Hint(GetLang("LangRefreshed"), HintType.Green)
+                    Else
+                        Hint(GetLang("LangModEventNoRefreshSupport"), HintType.Red)
+                    End If
+
+                Case EventType.刷新帮助
+                    RunInUiWait(Sub() PageOtherLeft.RefreshHelp())
+                    If String.IsNullOrEmpty(Arg) Then Hint(GetLang("LangRefreshed"), HintType.Green)
+
+                Case EventType.今日人品
+                    PageOtherTest.Jrrp()
+
+                Case EventType.内存优化
+                    RunInThread(Sub() PageOtherTest.MemoryOptimize(True))
+
+                Case EventType.清理垃圾
+                    RunInThread(Sub() PageOtherTest.RubbishClear())
+
+                Case EventType.弹出窗口
+                    If Args.Length = 1 Then Throw New Exception(GetLang("LangModEventDialogPopupParamError", Type))
+                    MyMsgBox(Args(1).Replace("\n", vbCrLf), Args(0).Replace("\n", vbCrLf), If(Args.Length > 2, Args(2), GetLang("LangDialogBtnOK")))
+
+                Case EventType.弹出提示
+                    Hint(Args(0).Replace("\n", vbCrLf), If(Args.Length = 1, HintType.Blue, EnumUtils.FromString(Of HintType)(Args(1))))
+
+                Case EventType.切换页面
+                    RunInUi(Sub() FrmMain.PageChange(
+                                EnumUtils.FromString(Of FormMain.PageType)(Args(0)),
+                                If(Args.Length = 1, FormMain.PageSubType.Default, EnumUtils.FromString(Of FormMain.PageSubType)(Args(1)))))
+
+                Case EventType.导入整合包, EventType.安装整合包
+                    RunInUi(Sub() ModpackInstall())
+
+                Case EventType.下载文件
+                    Args(0) = Args(0).Replace("\", "/")
+                    If Not (Args(0).StartsWithF("http://", True) OrElse Args(0).StartsWithF("https://", True)) Then
+                        MyMsgBox(GetLang("LangModEventDialogDownloadIncorrectContent"), GetLang("LangModEventDialogEventFailTitle"))
+                        Return
+                    End If
+                    If Not EventSafetyConfirm(GetLang("LangModEventDownloadConfirm", Args(0))) Then Return
+                    RunInUi(
+                    Sub()
+                        Try
+                            Select Case Args.Length
+                                Case 1
+                                    PageOtherTest.StartCustomDownload(Args(0), PathUtils.GetLastPart(Args(0)))
+                                Case 2
+                                    PageOtherTest.StartCustomDownload(Args(0), Args(1))
+                                Case Else
+                                    PageOtherTest.StartCustomDownload(Args(0), Args(1), Args(2))
+                            End Select
+                        Catch
+                            PageOtherTest.StartCustomDownload(Args(0), "未知")
+                        End Try
+                    End Sub)
+
+                Case EventType.修改设置, EventType.写入设置
+                    If Args.Length = 1 Then Throw New Exception(GetLang("LangModEventDialogSettingParamError", Type))
+                    Settings.SetSafe(Args(0), Args(1), Instance:=McInstanceSelected)
+                    If Args.Length = 2 Then Hint(GetLang("LangModEventSettingWritten", Args(0), Args(1)), HintType.Green)
+
+                Case EventType.修改变量, EventType.写入变量
+                    If Args.Length = 1 Then Throw New Exception(GetLang("LangModEventDialogVariableParamError", Type))
+                    WriteReg("CustomEvent" & Args(0), Args(1))
+                    If Args.Length = 2 Then Hint(GetLang("LangModEventVariableWritten", Args(0), Args(1)), HintType.Green)
+
+                Case EventType.加入房间
+                    RunInUi(
+                    Sub()
+                        If String.IsNullOrWhiteSpace(Arg) Then
+                            PageLinkMain.Join()
+                        Else
+                            If Not EventSafetyConfirm("即将加入第三方联机房间。") Then Return
+                            PageLinkMain.Join(Arg)
+                        End If
+                    End Sub)
+
+                Case EventType.检查更新
+                    UpdateCheckByButton()
+
+                Case Else
+                    MyMsgBox(GetLang("LangModEventDialogUnknownEventContent", Type), GetLang("LangModEventDialogEventFailTitle"))
+            End Select
+        Catch ex As Exception
+            Logger.Error(ex, $"事件执行失败（{Type}, {Arg}）", LogBehavior.Alert)
+        End Try
+    End Sub
+
+    Public Shared Function GetAbsoluteUrls(RelativeUrl As String, Type As EventType) As String()
+
+        If RelativeUrl.StartsWithF("http", True) Then
+            If RunInUi() Then
+                Throw New Exception("能打开联网帮助页面的 MyListItem 必须手动设置 Title、Info 属性！")
+            End If
+
+            Dim RawFileName As String
+            Try
+                RawFileName = PathUtils.GetLastPart(RelativeUrl)
+                If Not RawFileName.EndsWithF(".json", True) Then Throw New Exception("未指向 .json 后缀的文件")
+            Catch ex As Exception
+                Throw New Exception("联网帮助页面须指向一个帮助 JSON 文件，并在同路径下包含相应 XAML 文件！" & vbCrLf &
+                                    "例如：" & vbCrLf &
+                                    " - https://www.baidu.com/test.json（填写这个路径）" & vbCrLf &
+                                    " - https://www.baidu.com/test.xaml（同时也需要包含这个文件）", ex)
+            End Try
+
+            Dim LocalTemp As String = RequestTaskTempFolder() & RawFileName
+            Logger.Info($"转换网络资源：{RelativeUrl} -> {LocalTemp}")
+            Try
+                NetDownloadByClient(RelativeUrl, LocalTemp)
+                NetDownloadByClient(RelativeUrl.Replace(".json", ".xaml"), LocalTemp.Replace(".json", ".xaml"))
+            Catch ex As Exception
+                Throw New Exception("下载指定的文件失败！" & vbCrLf &
+                                    "注意，联网帮助页面须指向一个帮助 JSON 文件，并在同路径下包含相应 XAML 文件！" & vbCrLf &
+                                    "例如：" & vbCrLf &
+                                    " - https://www.baidu.com/test.json（填写这个路径）" & vbCrLf &
+                                    " - https://www.baidu.com/test.xaml（同时也需要包含这个文件）", ex)
+            End Try
+            RelativeUrl = LocalTemp
+        End If
+        RelativeUrl = RelativeUrl.Replace("/", "\").Lower.TrimStart("\")
+
+        Dim Location As String, WorkingDir As String = Paths.Base & "XFL"
+        HelpTryExtract()
+        If RelativeUrl.Contains(":\") Then
+
+            Location = RelativeUrl
+            Logger.Info($"自定义事件中由绝对路径{Type}：{Location}")
+        ElseIf FileUtils.Exists(Paths.Base & "XFL\" & RelativeUrl) Then
+
+            Location = Paths.Base & "XFL\" & RelativeUrl
+            Logger.Info($"自定义事件中由相对 XFL 文件夹的路径{Type}：{Location}")
+        ElseIf FileUtils.Exists(Paths.Base & "XFL\Help\" & RelativeUrl) Then
+
+            Location = Paths.Base & "XFL\Help\" & RelativeUrl
+            WorkingDir = Paths.Base & "XFL\Help\"
+            Logger.Info($"自定义事件中由相对 XFL 本地帮助文件夹的路径{Type}：{Location}")
+        ElseIf Type = EventType.打开帮助 AndAlso FileUtils.Exists(PathTemp & "Help\" & RelativeUrl) Then
+
+            Location = PathTemp & "Help\" & RelativeUrl
+            WorkingDir = PathTemp & "Help\"
+            Logger.Info($"自定义事件中由相对 XFL 自带帮助文件夹的路径{Type}：{Location}")
+        ElseIf Type = EventType.打开文件 OrElse Type = EventType.执行命令 Then
+
+            Location = RelativeUrl
+            Logger.Info($"自定义事件中直接{Type}：{Location}")
+        Else
+
+            Throw New FileNotFoundException("未找到 EventData 指向的本地 xaml 文件：" & RelativeUrl, RelativeUrl)
+        End If
+
+        Return {Location, WorkingDir}
+    End Function
+
+    Private Shared Function EventSafetyConfirm(Message As String) As Boolean
+        If Settings.Get(Of Boolean)("HintCustomCommand") Then Return True
+        Select Case MyMsgBox(Message & vbCrLf & GetLang("LangModEventSafetyConfirmContent"), GetLang("LangModEventSafetyConfirmTitle"), GetLang("LangDialogBtnContinue"), GetLang("LangModEventSafetyConfirmBtnContinueAlways"), GetLang("LangDialogBtnCancel"))
+            Case 1
+                Return True
+            Case 2
+                Settings.Set("HintCustomCommand", True)
+                Return True
+            Case Else
+                Return False
+        End Select
+    End Function
+
+End Class

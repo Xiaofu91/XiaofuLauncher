@@ -1,0 +1,51 @@
+﻿<Window x:Class="FormWebSmall"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:local="clr-namespace:PCL"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="小窗浏览 - Xiaofu Launcher" Width="560" Height="380" MinWidth="360" MinHeight="240"
+        Topmost="True" ShowInTaskbar="False" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource ColorBrushSurfaceWindow}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="10,8,10,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <local:MyButton x:Name="BtnSmallBack" Grid.Column="0" Width="92" Height="30" Text="回到主界面"
+                            ColorType="Highlight" CornerRadius="8" LabelFontSize="12.5"
+                            ToolTip="关闭小窗并把当前网页交回启动器主界面" />
+            <local:MyButton x:Name="BtnSmallTop" Grid.Column="1" Width="100" Height="30" Text="取消置顶"
+                            Margin="8,0,0,0" ColorType="Normal" CornerRadius="8" LabelFontSize="12.5"
+                            ToolTip="切换是否始终显示在最前面" />
+            <local:MyButton x:Name="BtnSmallBrowser" Grid.Column="2" Width="100" Height="30" Text="用浏览器开"
+                            Margin="8,0,0,0" ColorType="Normal" CornerRadius="8" LabelFontSize="12.5"
+                            ToolTip="在主界面的浏览器页里打开当前网址" />
+            <TextBlock x:Name="LabSmallUrl" Grid.Column="3" Margin="10,0,0,0" FontSize="12"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource ColorBrushTextTertiary}" />
+        </Grid>
+
+        <Border Grid.Row="1" Margin="10,0,10,10" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource ColorBrushBorderNormal}"
+                Background="{DynamicResource ColorBrushSurfaceCard}">
+            <Grid>
+                <wv2:WebView2 x:Name="WebView" Visibility="Collapsed" />
+                <TextBlock x:Name="LabSmallHint" Text="正在准备小窗…" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                           MaxWidth="420" TextAlignment="Center"
+                           Foreground="{DynamicResource ColorBrushTextSecondary}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

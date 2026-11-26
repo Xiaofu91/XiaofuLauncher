@@ -1,0 +1,156 @@
+﻿Public Class MyMsgLogin
+    Private Data As JObject
+    Private UserCode As String
+    Private DeviceCode As String
+    Private Website As String
+
+#Region "弹窗"
+
+    Private ReadOnly MyConverter As MyMsgBoxConverter
+    Private ReadOnly Uuid As Integer = GetUuid()
+
+    Public Sub New(Converter As MyMsgBoxConverter)
+        Try
+            InitializeComponent()
+            Btn1.Name = Btn1.Name & GetUuid()
+            Btn2.Name = Btn2.Name & GetUuid()
+            Btn3.Name = Btn3.Name & GetUuid()
+            MyConverter = Converter
+            ShapeLine.StrokeThickness = GetWPFSize(1)
+            Data = Converter.Content
+            Init()
+        Catch ex As Exception
+            Logger.Error(ex, GetLang("LangMyMsgLoginHintInitFail"), LogBehavior.Toast)
+        End Try
+    End Sub
+
+    Private Sub Load(sender As Object, e As EventArgs) Handles MyBase.Loaded
+        Try
+
+            Opacity = 0
+            AniStart(AaColor(FrmMain.PanMsg, Grid.BackgroundProperty, If(MyConverter.IsWarn, New MyColor(140, 80, 0, 0), New MyColor(90, 0, 0, 0)) - FrmMain.PanMsg.Background, 200), "PanMsg Background")
+            AniStart({
+                AaOpacity(Me, 1, 120, 60),
+                AaDouble(Sub(i) TransformPos.Y += i, -TransformPos.Y, 300, 60, New AniEaseOutBack(AniEasePower.Weak)),
+                AaDouble(Sub(i) TransformRotate.Angle += i, -TransformRotate.Angle, 300, 60, New AniEaseOutFluent(AniEasePower.Weak))
+            }, "MyMsgBox " & Uuid)
+
+            Logger.Info($"登录弹窗：{LabTitle.Text}{vbCrLf}{LabCaption.Text}")
+        Catch ex As Exception
+            Logger.Error(ex, "登录弹窗加载失败", LogBehavior.Toast)
+        End Try
+    End Sub
+    Private Sub Close()
+
+        AniStart({
+            AaCode(
+            Sub()
+                If Not WaitingMyMsgBox.Any() Then
+                    AniStart(AaColor(FrmMain.PanMsg, Grid.BackgroundProperty, New MyColor(0, 0, 0, 0) - FrmMain.PanMsg.Background, 200, Ease:=New AniEaseOutFluent(AniEasePower.Weak)))
+                End If
+            End Sub, 30),
+            AaOpacity(Me, -Opacity, 80, 20),
+            AaDouble(Sub(i) TransformPos.Y += i, 20 - TransformPos.Y, 150, 0, New AniEaseOutFluent),
+            AaDouble(Sub(i) TransformRotate.Angle += i, 6 - TransformRotate.Angle, 150, 0, New AniEaseInFluent(AniEasePower.Weak)),
+            AaCode(Sub() CType(Parent, Grid).Children.Remove(Me), , True)
+        }, "MyMsgBox " & Uuid)
+    End Sub
+
+    Public Sub Btn1_Click() Handles Btn1.Click
+    End Sub
+    Public Sub Btn3_Click() Handles Btn3.Click
+        Finished(New OperationCanceledException)
+    End Sub
+
+    Private Sub Drag(sender As Object, e As MouseButtonEventArgs) Handles PanBorder.MouseLeftButtonDown, LabTitle.MouseLeftButtonDown
+        On Error Resume Next
+        If e.GetPosition(ShapeLine).Y <= 2 Then FrmMain.DragMove()
+    End Sub
+
+#End Region
+
+    Private Sub Finished(Result As Object)
+        If MyConverter.IsExited Then Return
+        MyConverter.IsExited = True
+        MyConverter.Result = Result
+        RunInUi(AddressOf Close)
+        Thread.Sleep(200)
+        FrmMain.ShowWindowToTop()
+    End Sub
+
+    Private Sub Init()
+        UserCode = Data("user_code")
+        DeviceCode = Data("device_code")
+        Website = Data("verification_uri")
+
+        LabTitle.Text = GetLang("LangMyMsgLoginDialogTitleLoginMc")
+        LabCaption.Text = GetLang("LangMyMsgLoginDialogContent", UserCode, Website)
+        CustomEventService.SetEventData(Btn1, Website)
+        CustomEventService.SetEventData(Btn2, UserCode)
+
+        RunInNewThread(AddressOf WorkThread, "MyMsgLogin")
+    End Sub
+
+    Private Sub WorkThread()
+        Thread.Sleep(2000)
+        If MyConverter.IsExited Then Return
+        OpenWebsite(Website)
+        ClipboardSet(UserCode)
+        Thread.Sleep((Data("interval").ToObject(Of Integer) - 1) * 1000)
+
+        Dim UnknownFailureCount As Integer = 0
+        Do While Not MyConverter.IsExited
+            Try
+                Dim Result = NetRequestByClient(
+                    "https://login.microsoftonline.com/consumers/oauth2/v2.0/token", HttpMethod.Post,
+                    Content:=
+                        "grant_type=urn:ietf:params:oauth:grant-type:device_code" & "&" &
+                        "client_id=" & OAuthClientId & "&" &
+                        "device_code=" & DeviceCode & "&" &
+                        "scope=XboxLive.signin%20offline_access",
+                    ContentType:="application/x-www-form-urlencoded",
+                    Timeout:=5000 + UnknownFailureCount * 5000,
+                    MakeLog:=False, RequireJson:=True)
+
+                Dim ResultJson As JObject = Result.DeserializeJson()
+                McLaunchLog($"令牌过期时间：{ResultJson("expires_in")} 秒")
+                Hint(GetLang("LangMyMsgLoginHintLoginSuccess"), HintType.Green)
+                Finished({ResultJson("access_token").ToString, ResultJson("refresh_token").ToString})
+                Return
+            Catch ex As Exception
+
+                If TypeOf ex Is HttpRequestCodeException Then
+                    Dim Response = CType(ex, HttpRequestCodeException).Response
+                    If Response.Contains("authorization_declined") Then
+                        Finished(New Exception("$" & GetLang("LangMyMsgLoginExceptionDecline")))
+                        Return
+                    ElseIf Response.Contains("expired_token") Then
+                        Finished(New Exception("$" & GetLang("LangMyMsgLoginExceptionTimeout")))
+                        Return
+                    ElseIf Response.Contains("Account security interrupt") Then
+                        Finished(New Exception("$该账号由于安全问题无法登陆，请前往微软账户页获取更多信息。"))
+                        Return
+                    ElseIf Response.Contains("service abuse") Then
+                        Finished(New Exception("$非常抱歉，该账号已被微软封禁，无法登录。"))
+                        Return
+                    ElseIf Response.Contains("AADSTS70000") Then
+                        Finished(New RestartException)
+                        Return
+                    ElseIf Response.Contains("authorization_pending") Then
+                        Thread.Sleep(2000)
+                        Continue Do
+                    End If
+                End If
+                If UnknownFailureCount <= 2 Then
+                    UnknownFailureCount += 1
+                    Logger.Warn(ex, $"登录轮询第 {UnknownFailureCount} 次失败")
+                    Thread.Sleep(2000)
+                Else
+                    Finished(New Exception(GetLang("LangMyMsgLoginExceptionCheckFail"), ex))
+                    Return
+                End If
+            End Try
+        Loop
+    End Sub
+
+End Class

@@ -1,0 +1,781 @@
+﻿<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    x:Class="PageSetupUI"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          x:Name="PanBack">
+        <StackPanel x:Name="PanMain"
+                    Margin="25,10">
+            <local:MyCard Margin="0,15"
+                          Title="{StaticResource LangSetTheme}"
+                          x:Name="CardLauncher">
+                <Grid Margin="25,40,25,17">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"
+                                                  SharedSizeGroup="Name1"/>
+                                <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="1*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                    HorizontalAlignment="Left"
+                                    Text="{StaticResource LangSetThemeOpacity}"
+                                    Margin="0,0,20,0"/>
+                            <local:MySlider x:Name="SliderLauncherTransparent"
+                                    local:SettingService.Key="UiLauncherTransparent"
+                                    MaxValue="600"
+                                    ValueByKey="10"
+                                    Grid.ColumnSpan="5"
+                                    Grid.Column="1"/>
+                            <TextBlock Grid.Row="1"
+                                    VerticalAlignment="Center"
+                                    Name="LabLauncherHue"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Left"
+                                    Text="{StaticResource LangSetThemeHue}"
+                                    Margin="0,10,20,0"/>
+                            <local:MySlider Grid.Row="1"
+                                    Grid.Column="1"
+                                    x:Name="SliderLauncherHue"
+                                    local:SettingService.Key="UiLauncherHue"
+                                    Visibility="Collapsed"
+                                    MaxValue="360"
+                                    ValueByKey="10"
+                                    Margin="0,10,0,0"/>
+                            <TextBlock Grid.Row="2"
+                                    VerticalAlignment="Center"
+                                    Name="LabLauncherDelta"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Left"
+                                    Text="{StaticResource LangSetThemeToneGradient}"
+                                    Margin="0,10,20,0"/>
+                            <local:MySlider Grid.Row="2"
+                                    Grid.Column="1"
+                                    x:Name="SliderLauncherDelta"
+                                    local:SettingService.Key="UiLauncherDelta"
+                                    Visibility="Collapsed"
+                                    MaxValue="180"
+                                    ValueByKey="5"
+                                    Margin="0,10,0,0"/>
+                            <TextBlock Grid.Row="1"
+                                    Grid.Column="3"
+                                    VerticalAlignment="Center"
+                                    Name="LabLauncherSat"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Left"
+                                    Text="{StaticResource LangSetThemeSaturation}"
+                                    Margin="0,10,20,0"/>
+                            <local:MySlider Grid.Row="1"
+                                    Grid.Column="4"
+                                    x:Name="SliderLauncherSat"
+                                    local:SettingService.Key="UiLauncherSat"
+                                    Visibility="Collapsed"
+                                    MaxValue="100"
+                                    ValueByKey="5"
+                                    Margin="0,10,0,0"/>
+                            <TextBlock Grid.Row="2"
+                                    Grid.Column="3"
+                                    VerticalAlignment="Center"
+                                    Name="LabLauncherLight"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Left"
+                                    Text="{StaticResource LangSetThemeBrightness}"
+                                    Margin="0,10,20,0"/>
+                            <local:MySlider Grid.Row="2"
+                                    Grid.Column="4"
+                                    x:Name="SliderLauncherLight"
+                                    local:SettingService.Key="UiLauncherLight"
+                                    Visibility="Collapsed"
+                                    MaxValue="40"
+                                    ValueByKey="5"
+                                    Margin="0,10,0,0"/>
+                        </Grid>
+                        <Grid x:Name="PanLauncherTheme"
+                              Height="90"
+                              Margin="0,0,0,7">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"
+                                                  SharedSizeGroup="Name1"/>
+                                <ColumnDefinition/>
+                                <ColumnDefinition/>
+                                <ColumnDefinition/>
+                                <ColumnDefinition/>
+                                <ColumnDefinition/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock VerticalAlignment="Center"
+                                       HorizontalAlignment="Left"
+                                       Text="XFL 主题" Margin="0,0,20,0"/>
+                            <local:MyRadioBox Grid.Column="1" Grid.Row="0" Text="暖橙"
+                                              x:Name="RadioXflThemeAmber"/>
+                            <local:MyRadioBox Grid.Column="2" Grid.Row="0" Text="青绿"
+                                              x:Name="RadioXflThemeTeal"/>
+                            <local:MyRadioBox Grid.Column="3" Grid.Row="0" Text="石墨"
+                                              x:Name="RadioXflThemeGraphite"/>
+                            <local:MyRadioBox Grid.Column="4" Grid.Row="0" Text="暗黑"
+                                              x:Name="RadioXflThemeDark"/>
+                            <local:MyRadioBox Grid.Column="5" Grid.Row="0" Text="落日"
+                                              x:Name="RadioXflThemeSunset"/>
+
+                            <local:MyRadioBox Grid.Column="1" Grid.Row="1" Text="樱花粉"
+                                              x:Name="RadioXflThemeSakura"/>
+                            <local:MyRadioBox Grid.Column="2" Grid.Row="1" Text="海洋蓝"
+                                              x:Name="RadioXflThemeOcean"/>
+                            <local:MyRadioBox Grid.Column="3" Grid.Row="1" Text="森林绿"
+                                              x:Name="RadioXflThemeForest"/>
+                            <local:MyRadioBox Grid.Column="4" Grid.Row="1" Text="紫罗兰"
+                                              x:Name="RadioXflThemeViolet"/>
+                            <local:MyRadioBox Grid.Column="5" Grid.Row="1" Text="薄荷"
+                                              x:Name="RadioXflThemeMint"/>
+
+                            <TextBlock Grid.Row="2" VerticalAlignment="Center"
+                                       HorizontalAlignment="Left"
+                                       Text="窗口高度" Margin="0,0,20,0"/>
+                            <local:MyRadioButton Grid.Column="1" Grid.Row="2" Text="标准 720"
+                                              x:Name="BtnWinHeight720" Margin="0,0,12,0"/>
+                            <local:MyRadioButton Grid.Column="2" Grid.Row="2" Text="紧凑 480"
+                                              x:Name="BtnWinHeight480" Margin="0,0,12,0"/>
+                            <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Grid.Row="2"
+                                       VerticalAlignment="Center" FontSize="12"
+                                       Foreground="{DynamicResource ColorBrushTextTertiary}"
+                                       Text="紧凑模式会同时压缩主页页头与间距"/>
+                        </Grid>
+                        <local:MyCheckBox Text="{StaticResource LangSetThemeShowLogoOnStart}"
+                                Margin="-1,0,0,1"
+                                Height="22"
+                                x:Name="CheckLauncherLogo"
+                                Tag="UiLauncherLogo"/>
+                    </StackPanel>
+
+                </Grid>
+            </local:MyCard>
+            <local:MyCard x:Name="CardBackground"
+                          Margin="0,0,0,15"
+                          Title="{StaticResource LangSetBackgroundPic}">
+                <StackPanel Margin="25,40,25,20">
+                    <Grid x:Name="PanBackgroundSuit"
+                          Height="28"
+                          Margin="0,0,0,10"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetBackgroundPicAdaptive}"
+                                Margin="0,0,25,0"/>
+                        <local:MyComboBox x:Name="ComboBackgroundSuit"
+                                local:SettingService.Key="UiBackgroundSuit"
+                                Grid.Column="1">
+                            <local:MyComboBoxItem local:SettingService.Value="0"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptiveAuto}"
+                                    ToolTip="{StaticResource LangSetBackgroundPicAdaptiveAutoToolTip}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="4"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptiveTile}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="1"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptiveCentered}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="3"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptiveStretch}"
+                                    ToolTip="{StaticResource LangSetBackgroundPicAdaptiveStretchToolTip}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="5"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptivePosA}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="9"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptivePosB}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="7"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptivePosC}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="11"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptivePosD}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="2"
+                                    Content="{StaticResource LangSetBackgroundPicAdaptiveAdapt}"
+                                    ToolTip="{StaticResource LangSetBackgroundPicAdaptiveAdaptToolTip}"/>
+                        </local:MyComboBox>
+                    </Grid>
+                    <Grid x:Name="PanBackgroundOpacity"
+                          Height="22"
+                          Margin="0,0,0,7"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetThemeOpacity}"
+                                Margin="0,0,25,0"/>
+                        <local:MySlider x:Name="SliderBackgroundOpacity"
+                                local:SettingService.Key="UiBackgroundOpacity"
+                                MaxValue="1000"
+                                ValueByKey="10"
+                                Grid.Column="1"/>
+                    </Grid>
+                    <Grid x:Name="PanBackgroundBlur"
+                          Height="22"
+                          Margin="0,0,0,10"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetBackgroundPicBlur}"
+                                Margin="0,0,25,0"/>
+                        <local:MySlider x:Name="SliderBackgroundBlur"
+                                local:SettingService.Key="UiBackgroundBlur"
+                                MaxValue="40"
+                                Grid.Column="1"
+                                ToolTip="{StaticResource LangSetBackgroundPicBlurToolTip}"/>
+                    </Grid>
+                    <local:MyCheckBox Text="{StaticResource LangSetBackgroundPicColorfulBack}"
+                            Margin="-1,0,0,8"
+                            Height="22"
+                            x:Name="CheckBackgroundColorful"
+                            local:SettingService.Key="UiBackgroundColorful"/>
+                    <Grid Height="35"
+                            Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyButton x:Name="BtnBackgroundOpen"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetOpenFolder}"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ToolTip="{StaticResource LangSetBackgroundPicOpenFolderToolTip}"/>
+                        <local:MyButton x:Name="BtnBackgroundRefresh"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetBackgroundPicRefresh}"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ToolTip="{StaticResource LangSetBackgroundPicRefreshToolTip}"
+                                        Grid.Column="1"/>
+                        <local:MyButton x:Name="BtnBackgroundClear"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetBackgroundPicEmpty}"
+                                        Visibility="Collapsed"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ColorType="Red"
+                                        Grid.Column="2"/>
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+            <local:MyCard x:Name="CardMusic"
+                          Margin="0,0,0,15"
+                          Title="{StaticResource LangSetBackgroundMusicTitle}">
+                <StackPanel Margin="25,42,25,20">
+                    <Grid x:Name="PanMusicVolume"
+                          Visibility="Collapsed"
+                          Height="22"
+                          Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetBackgroundMusicVolume}"
+                                Margin="0,0,25,0"/>
+                        <local:MySlider x:Name="SliderMusicVolume"
+                                local:SettingService.Key="UiMusicVolume"
+                                MaxValue="1000"
+                                ValueByKey="10"
+                                Grid.Column="1"/>
+                    </Grid>
+                    <StackPanel x:Name="PanMusicDetail"
+                            Visibility="Collapsed"
+                            Margin="-1,0,0,3">
+                        <local:MyCheckBox Text="{StaticResource LangSetBackgroundMusicPlayRandom}"
+                                Margin="0,0,0,5"
+                                Height="22"
+                                x:Name="CheckMusicRandom"
+                                local:SettingService.Key="UiMusicRandom"/>
+                        <local:MyCheckBox Text="{StaticResource LangSetBackgroundMusicPlayOnStart}"
+                                Margin="0,0,0,5"
+                                Height="22"
+                                x:Name="CheckMusicAuto"
+                                local:SettingService.Key="UiMusicAuto"/>
+                        <local:MyCheckBox Text="{StaticResource LangSetBackgroundMusicPlayDuringGaming}"
+                                Margin="0,0,0,5"
+                                Height="22"
+                                x:Name="CheckMusicStart"
+                                local:SettingService.Key="UiMusicStart"/>
+                        <local:MyCheckBox Text="{StaticResource LangSetBackgroundMusicPlayDuringLaunching}"
+                                Margin="0,0,0,5"
+                                Height="22"
+                                x:Name="CheckMusicStop"
+                                local:SettingService.Key="UiMusicStop"/>
+                    </StackPanel>
+                    <Grid Height="35">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyButton x:Name="BtnMusicOpen"
+                                        Text="{StaticResource LangSetOpenFolder}"
+                                        MinWidth="140"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ToolTip="{StaticResource LangSetBackgroundMusicOpenFolderToolTip}"/>
+                        <local:MyButton x:Name="BtnMusicRefresh"
+                                        Text="{StaticResource LangSetBackgroundMusicRefresh}"
+                                        MinWidth="140"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ToolTip="{StaticResource LangSetBackgroundMusicRefreshToolTip}"
+                                        Grid.Column="1"/>
+                        <local:MyButton x:Name="BtnMusicClear"
+                                        Text="{StaticResource LangSetBackgroundMusicEmpty}"
+                                        MinWidth="140"
+                                        Visibility="Collapsed"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ColorType="Red"
+                                        Grid.Column="2"/>
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+            <local:MyCard x:Name="CardLogo"
+                          Margin="0,0,0,15"
+                          Title="{StaticResource LangSetTitle}">
+                <StackPanel Margin="25,40,25,15">
+                    <Grid Margin="-1,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="0.2*"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyRadioBox Text="{StaticResource LangSetNone}"
+                                x:Name="RadioLogoType0"
+                                Height="22"
+                                local:SettingService.Key="UiLogoType"
+                                local:SettingService.Value="0"
+                                Grid.Column="0"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetDefault}"
+                                x:Name="RadioLogoType1"
+                                Height="22"
+                                local:SettingService.Key="UiLogoType"
+                                local:SettingService.Value="1"
+                                Grid.Column="1"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetText}"
+                                x:Name="RadioLogoType2"
+                                Height="22"
+                                local:SettingService.Key="UiLogoType"
+                                local:SettingService.Value="2"
+                                Grid.Column="2"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetPicture}"
+                                x:Name="RadioLogoType3"
+                                Height="22"
+                                local:SettingService.Key="UiLogoType"
+                                local:SettingService.Value="3"
+                                Grid.Column="3"/>
+                    </Grid>
+                    <local:MyCheckBox Text="{StaticResource LangSetTitleLeft}"
+                            Margin="-1,8,0,3"
+                            Height="22"
+                            x:Name="CheckLogoLeft"
+                            local:SettingService.Key="UiLogoLeft"
+                            Visibility="Collapsed"/>
+                    <Grid x:Name="PanLogoText"
+                            Margin="0,14,0,5"
+                            Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetTitleContent}"
+                                Margin="0,0,25,0"/>
+                        <local:MyTextBox x:Name="TextLogoText"
+                                local:SettingService.Key="UiLogoText"
+                                Grid.Column="1"
+                                MaxLength="100"/>
+                    </Grid>
+                    <Grid x:Name="PanLogoChange"
+                          Margin="0,14,0,5"
+                          Height="35"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyButton x:Name="BtnLogoChange"
+                                        Text="{StaticResource LangSetTitlePicChange}"
+                                        MinWidth="140"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"/>
+                        <local:MyButton x:Name="BtnLogoDelete"
+                                        Text="{StaticResource LangSetTitlePicEmpty}"
+                                        MinWidth="140"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        ColorType="Red"
+                                        Grid.Column="1"/>
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+            <local:MyCard Margin="0,0,0,15"
+                          Title="{StaticResource LangSetHomePageTitle}"
+                          x:Name="CardCustom">
+                <StackPanel Margin="25,40,25,15">
+                    <Grid Margin="-1,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="0.2*"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyRadioBox Text="{StaticResource LangSetHomePageEmpty}"
+                                x:Name="RadioCustomType0"
+                                Height="22"
+                                local:SettingService.Key="UiCustomType"
+                                local:SettingService.Value="0"
+                                Grid.Column="0"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetHomePagePreset}"
+                                x:Name="RadioCustomType3"
+                                Height="22"
+                                local:SettingService.Key="UiCustomType"
+                                local:SettingService.Value="3"
+                                Grid.Column="1"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetHomePageLocal}"
+                                x:Name="RadioCustomType1"
+                                Height="22"
+                                local:SettingService.Key="UiCustomType"
+                                local:SettingService.Value="1"
+                                Grid.Column="2"/>
+                        <local:MyRadioBox Text="{StaticResource LangSetHomePageOnline}"
+                                x:Name="RadioCustomType2"
+                                Height="22"
+                                local:SettingService.Key="UiCustomType"
+                                local:SettingService.Value="2"
+                                Grid.Column="3"/>
+                    </Grid>
+                    <local:MyHint Margin="0,15,0,-4"
+                                  Text="See NodSetup.vb"
+                                  Theme="Blue"
+                                  x:Name="HintCustom"/>
+                    <local:MyHint Margin="0,15,0,6"
+                                  Text="{StaticResource LangSetHomePageCustomWarn}"
+                                  Theme="Yellow"
+                                  x:Name="HintCustomWarn"
+                                  CanClose="True"
+                                  RelativeSetup="HintCustomWarn"/>
+                    <Grid Height="35"
+                          x:Name="PanCustomLocal"
+                          Visibility="Collapsed"
+                          Margin="0,10,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Button"/>
+                        </Grid.ColumnDefinitions>
+                        <local:MyButton x:Name="BtnCustomRefresh"
+                                        Grid.Column="0"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetHomePageRefresh}"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        HorizontalAlignment="Left"
+                                        ColorType="Highlight"/>
+                        <local:MyButton x:Name="BtnCustomFile"
+                                        Grid.Column="1"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetHomePageReleaseTeachFile}"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        HorizontalAlignment="Left"/>
+                        <local:MyButton x:Name="BtnCustomTutorial"
+                                        Grid.Column="2"
+                                        MinWidth="140"
+                                        Text="{StaticResource LangSetHomePageSeeDoc}"
+                                        Padding="13,0"
+                                        Margin="0,0,20,0"
+                                        HorizontalAlignment="Left"/>
+                    </Grid>
+                    <Grid x:Name="PanCustomNet"
+                          Visibility="Collapsed"
+                          Margin="0,10,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetHomePageDownload}"
+                                Margin="0,0,25,0"/>
+                        <local:MyTextBox x:Name="TextCustomNet"
+                                local:SettingService.Key="UiCustomNet"
+                                Grid.Column="1"
+                                MaxHeight="28"
+                                         ToolTip="{StaticResource LangSetHomePageTipNet}">
+                            <local:MyTextBox.ValidateRules>
+                                <local:ValidateNullable/>
+                                <local:ValidateHttp/>
+                            </local:MyTextBox.ValidateRules>
+                        </local:MyTextBox>
+                    </Grid>
+                    <Grid x:Name="PanCustomPreset"
+                          Visibility="Collapsed"
+                          Margin="0,12,10,5"
+                          Height="28">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"
+                                              SharedSizeGroup="Name"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetHomePagePresetPage}"
+                                Margin="0,0,25,0"/>
+                        <local:MyComboBox x:Name="ComboCustomPreset"
+                                local:SettingService.Key="UiCustomPreset"
+                                Grid.ColumnSpan="2"
+                                Grid.Column="1">
+                            <local:MyComboBoxItem local:SettingService.Value="0"
+                                    Content="{StaticResource LangSetHomePagePresetPageA}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="1"
+                                    Content="{StaticResource LangSetHomePagePresetPageB}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="2"
+                                    Content="{StaticResource LangSetHomePagePresetPageC}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="4"
+                                    Content="{StaticResource LangSetHomePagePresetPageD}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="5"
+                                    Content="{StaticResource LangSetHomePagePresetPageE}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="6"
+                                    Content="{StaticResource LangSetHomePagePresetPageF}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="9"
+                                    Content="{StaticResource LangSetHomePagePresetPageG}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="11"
+                                    Content="{StaticResource LangSetHomePagePresetPageH}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="12"
+                                    Content="{StaticResource LangSetHomePagePresetPageJ}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="13"
+                                    Content="{StaticResource LangSetHomePagePresetPageL}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="14"
+                                    Content="{StaticResource LangSetHomePagePresetPageM}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="15"
+                                    Content="{StaticResource LangSetHomePagePresetPageN}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="16"
+                                    Content="{StaticResource LangSetHomePagePresetPageO}"/>
+                            <local:MyComboBoxItem local:SettingService.Value="17"
+                                    Content="{StaticResource LangSetHomePagePresetPageQ}"/>
+                        </local:MyComboBox>
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+            <local:MyCard x:Name="CardSwitch"
+                          Margin="0,0,0,15"
+                          Title="{StaticResource LangSetFuncHidden}">
+                <StackPanel Margin="25,38,15,15">
+                    <TextBlock Margin="0,1,0,1"
+                               Text="{StaticResource LangSetFuncHiddenToolTip}"
+                               TextWrapping="Wrap"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="0.8*"/>
+                            <ColumnDefinition Width="0.9*"/>
+                            <ColumnDefinition Width="0.8*"/>
+                            <ColumnDefinition Width="0.8*"/>
+                            <ColumnDefinition Width="1.0*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="4"/>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="1"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetFuncHiddenLaunch}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="1"
+                                Grid.Column="2"
+                                Text="{StaticResource LangSetFuncHiddenDownload}"
+                                x:Name="CheckHiddenPageDownload"
+                                local:SettingService.Key="UiHiddenPageDownload"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="1"
+                                Grid.Column="3"
+                                Text="{StaticResource LangSetFuncHiddenLink}"
+                                x:Name="CheckHiddenPageLink"
+                                local:SettingService.Key="UiHiddenPageLink"
+                                IsEnabled="False"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="1"
+                                Grid.Column="4"
+                                Text="{StaticResource LangSetFuncHiddenSettings}"
+                                x:Name="CheckHiddenPageSetup"
+                                local:SettingService.Key="UiHiddenPageSetup"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="1"
+                                Grid.Column="5"
+                                Text="{StaticResource LangSetFuncHiddenMore}"
+                                x:Name="CheckHiddenPageOther"
+                                local:SettingService.Key="UiHiddenPageOther"/>
+                        <TextBlock Grid.Row="2"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetFuncHiddenSettingsSubPage}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="2"
+                                Grid.Column="2"
+                                Text="{StaticResource LangSetFuncHiddenSettingsGame}"
+                                x:Name="CheckHiddenSetupLaunch"
+                                local:SettingService.Key="UiHiddenSetupLaunch"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="2"
+                                Grid.Column="3"
+                                Text="{StaticResource LangSetFuncHiddenSettingsLink}"
+                                x:Name="CheckHiddenSetupLink"
+                                local:SettingService.Key="UiHiddenSetupLink"
+                                IsEnabled="False"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="2"
+                                Grid.Column="4"
+                                Text="{StaticResource LangSetFuncHiddenSettingsPersonalize}"
+                                x:Name="CheckHiddenSetupUI"
+                                local:SettingService.Key="UiHiddenSetupUi"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="2"
+                                Grid.Column="5"
+                                Text="{StaticResource LangSetFuncHiddenSettingsLaunch}"
+                                x:Name="CheckHiddenSetupSystem"
+                                local:SettingService.Key="UiHiddenSetupSystem"/>
+                        <TextBlock Grid.Row="3"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetFuncHiddenMoreSubPage}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="3"
+                                Grid.Column="2"
+                                Text="{StaticResource LangSetFuncHiddenMoreHelp}"
+                                x:Name="CheckHiddenOtherHelp"
+                                local:SettingService.Key="UiHiddenOtherHelp"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="3"
+                                Grid.Column="3"
+                                Text="{StaticResource LangSetFuncHiddenMoreAbout}"
+                                x:Name="CheckHiddenOtherAbout"
+                                local:SettingService.Key="UiHiddenOtherAbout"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="3"
+                                Grid.Column="4"
+                                Text="{StaticResource LangSetFuncHiddenMoreTool}"
+                                x:Name="CheckHiddenOtherTest"
+                                local:SettingService.Key="UiHiddenOtherTest"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="3"
+                                Grid.Column="5"
+                                Text="{StaticResource LangSetFuncHiddenMoreFeedback}"
+                                x:Name="CheckHiddenOtherFeedback"
+                                local:SettingService.Key="UiHiddenOtherFeedback"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="3"
+                                Grid.Column="6"
+                                Text="{StaticResource LangSetFuncHiddenMoreVote}"
+                                x:Name="CheckHiddenOtherVote"
+                                local:SettingService.Key="UiHiddenOtherVote"/>
+                        <TextBlock Grid.Row="4"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{StaticResource LangSetFuncHiddenSpecial}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="4"
+                                Grid.Column="2"
+                                Text="{StaticResource LangSetFuncHiddenSpecialEmail}"
+                                x:Name="CheckLauncherEmail"
+                                local:SettingService.Key="UiLauncherEmail"
+                                ToolTip="{StaticResource LangSetFuncHiddenSpecialEmailToolTip}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="4"
+                                Grid.Column="3"
+                                Text="{StaticResource LangSetFuncHiddenSpecialInstanceSetting}"
+                                x:Name="CheckHiddenFunctionSelect"
+                                local:SettingService.Key="UiHiddenFunctionSelect"
+                                ToolTip="{StaticResource LangSetFuncHiddenSpecialInstanceSettingToolTip}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="4"
+                                Grid.Column="4"
+                                Text="{StaticResource LangSetFuncHiddenSpecialModUpdate}"
+                                x:Name="CheckHiddenFunctionModUpdate"
+                                local:SettingService.Key="UiHiddenFunctionModUpdate"
+                                ToolTip="{StaticResource LangSetFuncHiddenSpecialModUpdateToolTip}"/>
+                        <local:MyCheckBox Height="22"
+                                VerticalAlignment="Center"
+                                Grid.Row="4"
+                                Grid.Column="5"
+                                Text="{StaticResource LangSetFuncHiddenSpecialFuncHidden}"
+                                x:Name="CheckHiddenFunctionHidden"
+                                local:SettingService.Key="UiHiddenFunctionHidden"
+                                ToolTip="{StaticResource LangSetFuncHiddenSpecialFuncHiddenToolTip}"/>
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XFL 3D Player Preview</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; width:100%; background:transparent; overflow:hidden; }
+  #cv { display:block; width:100%; height:100%; }
+  #hint { position:absolute; left:8px; bottom:6px; font:11px "Microsoft YaHei UI", sans-serif;
+          color:rgba(255,255,255,.55); pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="hint">拖动可旋转 · 自动慢转</div>
+<script src="three.min.js"></script>
+<script>
+'use strict';
+/* XFL: 3D Minecraft 玩家模型预览
+   · 皮肤纹理 64x64 / 128x128 自适应
+   · 披风单独图片
+   · 拖动旋转 + 自动慢转
+   · 通过 window.__xflSetSkin(dataUrl) / window.__xflSetCape(dataUrl) 注入
+*/
+var W = window, D = document;
+var scene, camera, renderer, player, capeMesh;
+// XFL 第五十三批：初始朝向保持正面（rotY=0，避免「一打开看到后脑勺」），
+//   但改为**自动慢转** —— 与 Minecraft 官网的角色预览一致：
+//   披风挂在背后，正面视角会被身体完全挡住，只有转起来才能看到披风图案。
+//   用户拖动时暂停，松手 4 秒后自动恢复，保证披风等背面细节终会露出。
+var autoRotate = true, dragging = false, lastX = 0, lastY = 0, rotY = 0.0, rotX = 0.06;
+var resumeTimer = null;
+
+function init() {
+  var cv = D.getElementById('cv');
+  scene = new THREE.Scene();
+  // XFL: 模型高 32 单位。相机距离按「视野高度 ≈ 44」计算，让模型占画面约 73%，四周留白
+  //     视野高度 = 2 * dist * tan(fov/2) → dist = 44 / (2*tan(19°)) ≈ 64
+  camera = new THREE.PerspectiveCamera(38, 1, 0.1, 500);
+  camera.position.set(0, 1.0, 64);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true });
+  renderer.setPixelRatio(W.devicePixelRatio || 1);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  // 简单光照（模型坐标尺度较大，光源需相应放远）
+  scene.add(new THREE.AmbientLight(0xffffff, 0.78));
+  var d1 = new THREE.DirectionalLight(0xffffff, 0.55); d1.position.set(20, 40, 60); scene.add(d1);
+  var d2 = new THREE.DirectionalLight(0xbcd4ff, 0.30); d2.position.set(-30, 20, -20); scene.add(d2);
+
+  // 地面阴影（圆形，模型底部在 y=-16）
+  var sh = new THREE.Mesh(
+    new THREE.CircleGeometry(7, 32),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.16 }));
+  sh.rotation.x = -Math.PI / 2; sh.position.y = -16.15; scene.add(sh);
+
+  player = new THREE.Group();
+  scene.add(player);
+
+  resize();
+  W.addEventListener('resize', resize);
+  cv.addEventListener('mousedown', onDown);
+  W.addEventListener('mousemove', onMove);
+  W.addEventListener('mouseup', onUp);
+  cv.addEventListener('touchstart', onDown, { passive: false });
+  W.addEventListener('touchmove', onMove, { passive: false });
+  W.addEventListener('touchend', onUp);
+
+  renderer.setAnimationLoop(tick);
+
+  // XFL: 启动即显示默认史蒂夫模型（不依赖启动器注入）
+  try { showDefaultSteve(); } catch (e) { console.warn('default steve failed', e); }
+}
+
+function resize() {
+  var r = cv.getBoundingClientRect();
+  var w = Math.max(1, r.width), h = Math.max(1, r.height);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+function onDown(e) {
+  dragging = true; autoRotate = false;
+  if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+  var p = pt(e); lastX = p.x; lastY = p.y;
+  if (e.cancelable) e.preventDefault();
+}
+function onMove(e) {
+  if (!dragging) return;
+  var p = pt(e);
+  rotY += (p.x - lastX) * 0.01;
+  rotX += (p.y - lastY) * 0.01;
+  rotX = Math.max(-1.2, Math.min(1.2, rotX));
+  lastX = p.x; lastY = p.y;
+  if (e.cancelable) e.preventDefault();
+}
+function onUp() {
+  dragging = false;
+  // 松手 4 秒后自动恢复慢转（保证披风等背面细节最终能看到）
+  if (resumeTimer) clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(function () { autoRotate = true; }, 4000);
+}
+function pt(e) {
+  if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+function tick() {
+  if (autoRotate) rotY += 0.008;   // XFL: 慢转速度（约 13 秒一圈，几秒内即可转到背面看到披风）
+  player.rotation.y = rotY;
+  player.rotation.x = rotX;
+  // XFL: 披风已挂进 player 组，自动跟随旋转，只需加一点飘动
+  if (capeMesh) {
+    capeMesh.rotation.z = Math.sin(W.performance.now() / 420) * 0.045;
+  }
+  renderer.render(scene, camera);
+}
+
+/* ---- 皮肤 UV 映射 ----
+   ★ 第四十二批重写：不再借用 BoxGeometry 的默认顶点顺序（其面朝向/UV 绕序在不同版本里
+     容易搞错，导致贴图旋转、镜像、错位），改为**显式构造顶点**：
+     每个面按「从该面外侧看」的左山、右上、左下、右下四个角给出真实三维坐标，
+     UV 直接对该区域的图像像素坐标映射，朝向完全确定、无歧义。
+
+   参数 map: {front,back,right,left,top,bottom} = [x, y, w, h]（图像像素坐标，左上原点）
+   参数 texW/texH: 贴图像素尺寸（皮肤 64x64，披风 64x32），UV 按它归一化
+   纹理已设 flipY=false → UV 的 v=0 对应图像顶部，v=1 对应底部
+*/
+function makeBox(w, h, d, map, texW, texH) {
+  var TW = texW || 64, TH = texH || 64;
+  var hx = w / 2, hy = h / 2, hz = d / 2;
+  var pos = [], uvs = [], idx = [], vi = 0;
+
+  function addFace(corners, rect) {
+    if (!rect) return;
+    var u0 = rect[0] / TW;
+    var u1 = (rect[0] + rect[2]) / TW;
+    var v0 = rect[1] / TH;                      // 图像上边缘
+    var v1 = (rect[1] + rect[3]) / TH;          // 图像下边缘
+    for (var i = 0; i < 4; i++) {
+      pos.push(corners[i][0], corners[i][1], corners[i][2]);
+    }
+    // 顺序：左上、右上、左下、右下
+    uvs.push(u0, v0, u1, v0, u0, v1, u1, v1);
+    // 两个三角形（逆时针，法线朝外）
+    idx.push(vi, vi + 2, vi + 1, vi + 1, vi + 2, vi + 3);
+    vi += 4;
+  }
+
+  // 正面 +Z：从 +Z 看，左 = -X，右 = +X，上 = +Y
+  addFace([[-hx, hy, hz], [hx, hy, hz], [-hx, -hy, hz], [hx, -hy, hz]], map.front);
+  // 背面 -Z：从 -Z 看，左 = +X，右 = -X，上 = +Y
+  addFace([[hx, hy, -hz], [-hx, hy, -hz], [hx, -hy, -hz], [-hx, -hy, -hz]], map.back);
+  // 右面 +X：从 +X 看，左 = +Z，右 = -Z，上 = +Y
+  addFace([[hx, hy, hz], [hx, hy, -hz], [hx, -hy, hz], [hx, -hy, -hz]], map.right);
+  // 左面 -X：从 -X 看，左 = -Z，右 = +Z，上 = +Y
+  addFace([[-hx, hy, -hz], [-hx, hy, hz], [-hx, -hy, -hz], [-hx, -hy, hz]], map.left);
+  // 顶面 +Y：俯视，屏幕上 = -Z（后），右 = +X
+  addFace([[-hx, hy, -hz], [hx, hy, -hz], [-hx, hy, hz], [hx, hy, hz]], map.top);
+  // 底面 -Y：仰视，屏幕上 = +Z（前），右 = +X
+  addFace([[-hx, -hy, hz], [hx, -hy, hz], [-hx, -hy, -hz], [hx, -hy, -hz]], map.bottom);
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildPlayer(skinTex, slim) {
+  // XFL: 披风与身体挂在同一个组里，重建模型时**必须保留披风**，
+  //      否则换皮肤 / 粗壮纤细切换会把披风一起清掉（表现为「披风忽然没了」）。
+  var keepCape = capeMesh;
+  while (player.children.length) {
+    var c = player.children.pop();
+    if (c === keepCape) continue;              // 披风不销毁、不重复释放
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+  }
+  if (skinTex) {
+    skinTex.flipY = false;                     // UV 直接对应图像像素坐标（v=0 为图像顶部）
+    skinTex.magFilter = THREE.NearestFilter;   // 像素风：放大用最近邻，保持锐利
+    skinTex.minFilter = THREE.NearestFilter;   // 缩小也用最近邻，避免 mipmap 跨区域渗色
+    skinTex.generateMipmaps = false;
+    skinTex.wrapS = THREE.ClampToEdgeWrapping; // 防止 UV 在接缝处采样到相邻部位
+    skinTex.wrapT = THREE.ClampToEdgeWrapping;
+    skinTex.needsUpdate = true;
+  }
+  // 基础层材质：完全不透明
+  var mat = new THREE.MeshLambertMaterial({ map: skinTex, color: 0xffffff });
+  // ★ 外层材质（帽子/外套/袖子/裤腿）：Minecraft 官方第二层是半透明的，
+  //   这里用 alphaTest 做「镂空」渲染 —— 完全不透明像素正常绘制、全透明像素直接丢弃，
+  //   既保留了外层图案，又不会因为半透明混合出现面片排序错乱。
+  var matOuter = new THREE.MeshLambertMaterial({
+    map: skinTex, color: 0xffffff,
+    alphaTest: 0.5, side: THREE.DoubleSide
+  });
+
+  // 手臂宽度：Classic=4，Slim=3（纤细）
+  var aw = slim ? 3 : 4;
+  var armOffX = (8 + aw) / 2;   // 手臂中心 = 身体半宽4 + 手臂半宽
+
+  // ★ 标准 64x64 Minecraft 皮肤 UV 布局
+  //   基础层：头(0,0) 身体(16,16) 右臂(40,16) 右腿(0,16) 左臂(32,48) 左腿(16,48)
+  //   外 层：头(32,0) 身体(16,32) 右臂(40,32) 右腿(0,32) 左臂(48,48) 左腿(0,48)
+  // ★ 部件高度：腿中心 y=6（0..12）、身体中心 y=18（12..24）、头中心 y=28（24..32）
+  //   外层按 Minecraft 官方做法整体膨胀 1 像素（对应 addBox 的 0.5F 参数）
+  function addPart(w, h, d, map, material, x, y, z) {
+    var m = new THREE.Mesh(makeBox(w, h, d, map), material);
+    m.position.set(x, y, z);
+    player.add(m);
+    return m;
+  }
+
+  // 手臂 UV：前/后面宽 = aw（纤细皮肤该处只有 3 像素），左/右面深 = 4
+  function armMap(ox, oy) {
+    return {
+      top:    [ox + 4,          oy,     aw, 4],
+      bottom: [ox + 4 + aw,     oy,     aw, 4],
+      right:  [ox,              oy + 4, 4,  12],
+      front:  [ox + 4,          oy + 4, aw, 12],
+      left:   [ox + 4 + aw,     oy + 4, 4,  12],
+      back:   [ox + 4 + aw + 4, oy + 4, aw, 12]
+    };
+  }
+  // 腿部 UV（腿固定 4 宽 4 深）
+  function legMap(ox, oy) {
+    return {
+      top:    [ox + 4,  oy,     4, 4],
+      bottom: [ox + 8,  oy,     4, 4],
+      right:  [ox,      oy + 4, 4, 12],
+      front:  [ox + 4,  oy + 4, 4, 12],
+      left:   [ox + 8,  oy + 4, 4, 12],
+      back:   [ox + 12, oy + 4, 4, 12]
+    };
+  }
+
+  // ============ 基础层（Skin）============
+  // 头 8x8x8
+  addPart(8, 8, 8, {
+    right:  [0, 8, 8, 8], left:  [16, 8, 8, 8], front: [8, 8, 8, 8],
+    back:   [24, 8, 8, 8], top:  [8, 0, 8, 8], bottom: [16, 0, 8, 8]
+  }, mat, 0, 28, 0);
+  // 身体 8x12x4
+  addPart(8, 12, 4, {
+    right:  [16, 20, 4, 12], left:  [28, 20, 4, 12], front: [20, 20, 8, 12],
+    back:   [32, 20, 8, 12], top:   [20, 16, 8, 4],  bottom: [28, 16, 8, 4]
+  }, mat, 0, 18, 0);
+  // 右臂
+  addPart(aw, 12, 4, armMap(40, 16), mat, -armOffX, 18, 0);
+  // 左臂（基础层左臂在 (32,48)）
+  addPart(aw, 12, 4, armMap(32, 48), mat, armOffX, 18, 0);
+  // 右腿
+  addPart(4, 12, 4, legMap(0, 16), mat, -2, 6, 0);
+  // 左腿（基础层左腿在 (16,48)）
+  addPart(4, 12, 4, legMap(16, 48), mat, 2, 6, 0);
+
+  // ============ 外层（Hat / Jacket / Sleeve / Pants）============
+  // 帽子 9x9x9（头部 (32,0)）
+  addPart(9, 9, 9, {
+    right:  [32, 8, 8, 8], left:  [48, 8, 8, 8], front: [40, 8, 8, 8],
+    back:   [56, 8, 8, 8], top:   [40, 0, 8, 8], bottom: [48, 0, 8, 8]
+  }, matOuter, 0, 28, 0);
+  // 外套 9x13x5（身体 (16,32)）
+  addPart(9, 13, 5, {
+    right:  [16, 36, 4, 12], left:  [28, 36, 4, 12], front: [20, 36, 8, 12],
+    back:   [32, 36, 8, 12], top:   [20, 32, 8, 4],  bottom: [28, 32, 8, 4]
+  }, matOuter, 0, 18, 0);
+  // 右袖 (aw+1)x13x5（右臂外层 (40,32)）
+  addPart(aw + 1, 13, 5, armMap(40, 32), matOuter, -armOffX, 18, 0);
+  // 左袖（左臂外层 (48,48)）
+  addPart(aw + 1, 13, 5, armMap(48, 48), matOuter, armOffX, 18, 0);
+  // 右裤腿 5x13x5（右腿外层 (0,32)）
+  addPart(5, 13, 5, legMap(0, 32), matOuter, -2, 6, 0);
+  // 左裤腿（左腿外层 (0,48)）
+  addPart(5, 13, 5, legMap(0, 48), matOuter, 2, 6, 0);
+
+  // ★ 整体居中：模型高 32（y 从 0 到 32），把中心移到 y=0
+  player.position.set(0, -16, 0);
+
+  // XFL: 把之前保留下来的披风重新挂回组里（跟随模型一起旋转）
+  if (keepCape && keepCape.parent !== player) player.add(keepCape);
+}
+
+/* ---- XFL: 生成默认史蒂夫皮肤（64x64 程序化绘制）---- */
+function makeDefaultSteveSkin() {
+  var c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  var g = c.getContext('2d');
+
+  // 基础肤色/衣服色
+  var SKIN = '#b48a6c';       // 皮肤
+  var SKIN_D = '#9a7154';     // 皮肤暗部
+  var HAIR = '#3a2a1a';       // 头发
+  var SHIRT = '#00a8a8';      // 青色上衣
+  var SHIRT_D = '#008f8f';
+  var PANTS = '#3b3b8f';      // 深蓝裤子
+  var PANTS_D = '#2e2e70';
+  var SHOE = '#5a5a5a';
+
+  function fill(x, y, w, h, col) { g.fillStyle = col; g.fillRect(x, y, w, h); }
+  function noise(x, y, w, h, base, dark, ratio) {
+    fill(x, y, w, h, base);
+    for (var i = 0; i < w; i++) for (var j = 0; j < h; j++) {
+      if (Math.random() < (ratio || 0.18)) fill(x + i, y + j, 1, 1, dark);
+    }
+  }
+
+  // ★★★ 严格按 64x64 标准 Minecraft 皮肤布局绘制 ★★★
+  //   ★ 关键：每个面必须整块填满，否则 3D 采样到透明区域会显示成黑色
+
+  // ============ 头 8x8x8 ============
+  // 右(0,8) 正面(8,8) 左(16,8) 背(24,8) 顶(8,0) 底(16,0)
+  noise(0, 8, 8, 8, SKIN, SKIN_D, 0.10);      // 右面
+  noise(8, 8, 8, 8, SKIN, SKIN_D, 0.10);      // 正面
+  noise(16, 8, 8, 8, SKIN, SKIN_D, 0.10);     // 左面
+  noise(24, 8, 8, 8, SKIN, SKIN_D, 0.10);     // 背面
+  noise(8, 0, 8, 8, HAIR, '#2a1d10', 0.22);   // 顶面（头发）
+  noise(16, 0, 8, 8, SKIN, SKIN_D, 0.10);     // 底面
+
+  // 头发：背面上半 + 左右上沿 + 正面上沿发际线（2 行）
+  fill(24, 8, 8, 4, HAIR);
+  fill(0, 8, 8, 3, HAIR);
+  fill(16, 8, 8, 3, HAIR);
+  fill(8, 8, 8, 2, HAIR);
+  // 面部五官（正面 8x8 区域 x=8..15 y=8..15，放大加粗以保证 3D 下可见）
+  // 眼睛：2x2 黑眼珠 + 白色高光
+  fill(9, 11, 2, 2, '#ffffff');
+  fill(13, 11, 2, 2, '#ffffff');
+  fill(10, 12, 1, 1, '#2b1d6b');          // 左瞳孔
+  fill(14, 12, 1, 1, '#2b1d6b');          // 右瞳孔
+  // 眉毛
+  fill(9, 10, 2, 1, HAIR);
+  fill(13, 10, 2, 1, HAIR);
+  // 嘴（3x1 深色）
+  fill(10, 14, 4, 1, '#6d4636');
+  // 鼻
+  fill(11, 13, 2, 1, SKIN_D);
+
+  // ============ 身体 8x12x4 ============
+  // 右(16,20) 正面(20,20) 左(28,20) 背(32,20) 顶(20,16) 底(28,16)
+  noise(16, 20, 4, 12, SHIRT, SHIRT_D, 0.06);    // 右面（宽4 高12）
+  noise(20, 20, 8, 12, SHIRT, SHIRT_D, 0.06);    // 正面（宽8 高12）
+  noise(28, 20, 4, 12, SHIRT, SHIRT_D, 0.06);    // 左面
+  noise(32, 20, 8, 12, SHIRT, SHIRT_D, 0.06);    // 背面
+  fill(20, 16, 8, 4, SHIRT);                      // 顶面（宽8 深4）
+  fill(28, 16, 8, 4, SHIRT);                      // 底面
+  fill(22, 20, 4, 1, SKIN_D);                     // 领口
+
+  // ============ 右臂 4x12x4（第一层 y=16..32）============
+  // 右(40,20) 正面(44,20) 左(48,20) 背(52,20) 顶(44,16) 底(48,16)
+  // 每面都是 4 宽 × 12 高，上 4 行袖子、下 8 行皮肤
+  fill(40, 20, 4, 4, SHIRT); noise(40, 24, 4, 8, SKIN, SKIN_D, 0.08);   // 右面
+  fill(44, 20, 4, 4, SHIRT); noise(44, 24, 4, 8, SKIN, SKIN_D, 0.08);   // 正面
+  fill(48, 20, 4, 4, SHIRT); noise(48, 24, 4, 8, SKIN, SKIN_D, 0.08);   // 左面
+  fill(52, 20, 4, 4, SHIRT); noise(52, 24, 4, 8, SKIN, SKIN_D, 0.08);   // 背面
+  fill(44, 16, 4, 4, SHIRT);                                             // 顶面
+  fill(48, 16, 4, 4, SKIN);                                              // 底面
+
+  // ============ 左臂 4x12x4（第二层 y=48..64）============
+  // 右(32,52) 正面(36,52) 左(40,52) 背(44,52) 顶(36,48) 底(40,48)
+  fill(32, 52, 4, 4, SHIRT); noise(32, 56, 4, 8, SKIN, SKIN_D, 0.08);   // 右面
+  fill(36, 52, 4, 4, SHIRT); noise(36, 56, 4, 8, SKIN, SKIN_D, 0.08);   // 正面
+  fill(40, 52, 4, 4, SHIRT); noise(40, 56, 4, 8, SKIN, SKIN_D, 0.08);   // 左面
+  fill(44, 52, 4, 4, SHIRT); noise(44, 56, 4, 8, SKIN, SKIN_D, 0.08);   // 背面
+  fill(36, 48, 4, 4, SHIRT);                                             // 顶面
+  fill(40, 48, 4, 4, SKIN);                                              // 底面
+
+  // ============ 右腿 4x12x4（第一层 y=16..32）============
+  // 右(0,20) 正面(4,20) 左(8,20) 背(12,20) 顶(4,16) 底(8,16)
+  // 每面 4 宽 × 12 高，上 8 行裤子、下 4 行鞋
+  noise(0, 20, 4, 8, PANTS, PANTS_D, 0.06); fill(0, 28, 4, 4, SHOE);    // 右面
+  noise(4, 20, 4, 8, PANTS, PANTS_D, 0.06); fill(4, 28, 4, 4, SHOE);    // 正面
+  noise(8, 20, 4, 8, PANTS, PANTS_D, 0.06); fill(8, 28, 4, 4, SHOE);    // 左面
+  noise(12, 20, 4, 8, PANTS, PANTS_D, 0.06); fill(12, 28, 4, 4, SHOE);  // 背面
+  fill(4, 16, 4, 4, PANTS);                                              // 顶面
+  fill(8, 16, 4, 4, SHOE);                                               // 底面
+
+  // ============ 左腿 4x12x4（第二层 y=48..64）============
+  // 右(16,52) 正面(20,52) 左(24,52) 背(28,52) 顶(20,48) 底(24,48)
+  noise(16, 52, 4, 8, PANTS, PANTS_D, 0.06); fill(16, 60, 4, 4, SHOE);  // 右面
+  noise(20, 52, 4, 8, PANTS, PANTS_D, 0.06); fill(20, 60, 4, 4, SHOE);  // 正面
+  noise(24, 52, 4, 8, PANTS, PANTS_D, 0.06); fill(24, 60, 4, 4, SHOE);  // 左面
+  noise(28, 52, 4, 8, PANTS, PANTS_D, 0.06); fill(28, 60, 4, 4, SHOE);  // 背面
+  fill(20, 48, 4, 4, PANTS);                                              // 顶面
+  fill(24, 48, 4, 4, SHOE);                                               // 底面
+
+  return c.toDataURL('image/png');
+}
+
+function buildCape(capeTex) {
+  if (capeMesh) {
+    if (capeMesh.parent) capeMesh.parent.remove(capeMesh);
+    if (capeMesh.geometry) capeMesh.geometry.dispose();
+    if (capeMesh.material) capeMesh.material.dispose();
+    capeMesh = null;
+  }
+  if (!capeTex) return;
+  capeTex.flipY = false;
+  capeTex.magFilter = THREE.NearestFilter;
+  capeTex.minFilter = THREE.NearestFilter;
+  capeTex.generateMipmaps = false;
+  capeTex.wrapS = THREE.ClampToEdgeWrapping;
+  capeTex.wrapT = THREE.ClampToEdgeWrapping;
+
+  // ★ 与 Minecraft 官方披风模型一致：10x16x1 的薄盒子，而不是一张平面。
+  //   官方 addBox(-5,0,-1, 10,16,1) 在贴图 (0,0) 处的展开布局：
+  //     顶(1,0,10,1) 底(11,0,10,1) 右(0,1,1,16) 前(1,1,10,16) 左(11,1,1,16) 背(12,1,10,16)
+  //   披风贴图是 64x32（不是皮肤的 64x64），所以 UV 按 64x32 归一化。
+  var capeMat = new THREE.MeshLambertMaterial({
+    map: capeTex, side: THREE.DoubleSide,
+    alphaTest: 0.5   // 披风边缘常有透明像素，做镂空处理
+  });
+  var capeGeo = makeBox(10, 16, 1, {
+    top:    [1,  0, 10, 1],
+    bottom: [11, 0, 10, 1],
+    right:  [0,  1, 1, 16],
+    front:  [1,  1, 10, 16],
+    left:   [11, 1, 1, 16],
+    back:   [12, 1, 10, 16]
+  }, 64, 32);
+  capeMesh = new THREE.Mesh(capeGeo, capeMat);
+  // 挂在肩后：身体背面 z=-2，披风厚 1 → 中心 z≈-2.5；
+  // 高 16、顶部对齐肩部 y=24 → 中心 y=16（覆盖 y=8..24）
+  capeMesh.position.set(0, 16, -2.5);
+  capeMesh.rotation.x = 0.10;
+  // ★ 挂进 player 组，自动跟随旋转（避免手动同步导致漂移）
+  player.add(capeMesh);
+}
+
+/* ---- 对外接口 ---- */
+var currentSlim = false;      // 当前模型类型：false=粗壮(Classic) true=纤细(Slim)
+var currentSkinTex = null;    // 当前皮肤纹理（用于切换粗细时重建）
+
+function applySkinTexture(tex, slim) {
+  currentSkinTex = tex;
+  currentSlim = !!slim;
+  buildPlayer(tex, currentSlim);
+}
+
+/* 设置皮肤（dataUrl 为空则用默认史蒂夫） */
+W.__xflSetSkin = function (dataUrl) {
+  if (!dataUrl) {
+    // 默认史蒂夫
+    var def = makeDefaultSteveSkin();
+    new THREE.TextureLoader().load(def, function (t) {
+      applySkinTexture(t, currentSlim);
+      W.__xflSkinReady && W.__xflSkinReady(true);
+    }, undefined, function () {
+      W.__xflSkinReady && W.__xflSkinReady(false);
+    });
+    return;
+  }
+  new THREE.TextureLoader().load(dataUrl, function (t) {
+    applySkinTexture(t, currentSlim);
+    W.__xflSkinReady && W.__xflSkinReady(true);
+  }, undefined, function () {
+    W.__xflSkinReady && W.__xflSkinReady(false);
+  });
+};
+
+/* 切换模型类型：'slim' = 纤细，其它 = 粗壮 */
+W.__xflSetModelType = function (type) {
+  var slim = (type === 'slim');
+  if (slim === currentSlim && currentSkinTex) return;
+  currentSlim = slim;
+  if (currentSkinTex) {
+    buildPlayer(currentSkinTex, slim);
+  }
+};
+
+/* 重置为默认史蒂夫 */
+W.__xflResetSkin = function () {
+  W.__xflSetSkin(null);
+};
+
+W.__xflSetCape = function (dataUrl) {
+  if (!dataUrl) { buildCape(null); return; }
+  new THREE.TextureLoader().load(dataUrl, function (t) { buildCape(t); }, undefined, function () { buildCape(null); });
+};
+W.__xflGetReady = function () { return !!player; };
+
+/* XFL: 页面加载后立即显示默认史蒂夫（不用等启动器注入） */
+function showDefaultSteve() {
+  var def = makeDefaultSteveSkin();
+  new THREE.TextureLoader().load(def, function (t) {
+    applySkinTexture(t, currentSlim);
+  });
+}
+
+if (W.__xflAutoInit !== false) init();
+</script>
+</body>
+</html>

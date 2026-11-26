@@ -1,0 +1,969 @@
+﻿Imports System.Collections.ObjectModel
+Imports System.Globalization
+Imports System.Net.Sockets
+Imports System.Reflection
+Imports PCL
+
+Public Class PageLinkMain
+    Private Const INVITE_CODE_VERSION As Integer = 2
+
+#Region "状态管理"
+
+    Public Enum LinkStates
+        Waiting
+        Loading
+        Failed
+        Finished
+    End Enum
+    Public Shared LinkState As LinkStates = LinkStates.Waiting
+
+    Private Sub ChangeState(NewState As LinkStates)
+        If LinkState = NewState Then Return
+        Dim OldState = LinkState
+        LinkState = NewState
+        Logger.Info($"主状态由 {OldState} 变更为 {NewState}")
+
+        RunInUi(
+        Sub()
+            Select Case NewState
+                Case LinkStates.Waiting
+                    SwitchToWaiting(OldState)
+                Case LinkStates.Loading
+                    SwitchToLoading(OldState)
+                Case LinkStates.Failed
+                    SwitchToFailed(OldState)
+                Case LinkStates.Finished
+                    SwitchToFinished(OldState)
+            End Select
+        End Sub)
+    End Sub
+
+    Private Sub LoaderInit() Handles Me.Initialized
+        PageLoaderInit(Load, PanLoad, PanContent, PanAlways, LinkLoader, AutoRun:=False)
+        AddHandler LinkLoader.OnStateChangedUi,
+        Sub(Loader As LoaderBase, NewState As LoadState, OldState As LoadState)
+            Select Case NewState
+                Case LoadState.Finished
+                    ChangeState(LinkStates.Finished)
+                Case LoadState.Failed
+                    Telemetry("联机失败", "Exception", FilterUserName(Loader.Error.GetDisplay(True), "*"))
+                    ChangeState(LinkStates.Failed)
+            End Select
+        End Sub
+    End Sub
+
+    Private Sub UpdatePanelVisibility() Handles Me.PageEnter
+        FrmLinkMain.PanSelect.Visibility = If(LinkState = LinkStates.Waiting, Visibility.Visible, Visibility.Collapsed)
+        FrmLinkMain.PanFinish.Visibility = If(LinkState = LinkStates.Finished, Visibility.Visible, Visibility.Collapsed)
+    End Sub
+
+#End Region
+
+#Region "初始页面 (Waiting)"
+
+    Private Sub SwitchToWaiting(OldState As LinkStates)
+
+        LinkLoader.Cancel()
+        SyncLock LinkLoader.LockState
+            LinkLoader.State = LoadState.Waiting
+        End SyncLock
+        ProcessStop()
+
+        If OldState <> LinkStates.Finished Then
+
+            UpdatePanelVisibility()
+        End If
+        PageOnContentExit()
+    End Sub
+
+    Private Sub Create_MouseLeftButtonUp() Handles PanSelectCreate.MouseLeftButtonUp
+
+        Dim Port As String = MyMsgBoxInput(GetLang("LangPageLinkInputPort"), GetLang("LangPageLinkInputPortDesc"),
+            ValidateRules:=New ObjectModel.Collection(Of Validate) From {New ValidateInteger(1024, 65535)},
+            HintText:=GetLang("LangPageLinkInputPortHint"))
+        If Port Is Nothing Then Return
+
+        IsServerSide = True
+        ServerPort = Port
+        Dim GenerateRandomCode =
+        Function() As String
+            Dim Result As String = ""
+            For i = 1 To 5
+                Result &= RandomInteger(0, 35).ConvertRadix(36)
+            Next
+            Return Result.Replace("O", "0").Replace("I", "1")
+        End Function
+        NetworkName = $"P{ServerPort.ConvertRadix(16).PadLeft(4, "0"c)}-{GenerateRandomCode()}"
+        NetworkSecret = GenerateRandomCode()
+        DiscoverNodeID = -1
+        Logger.Info($"尝试创建房间，网络名 {NetworkName}，网络密码 {NetworkSecret}，端口 {ServerPort}")
+
+        ChangeState(LinkStates.Loading)
+    End Sub
+
+    Private Shared LastCode As String = Nothing
+
+    Public Shared Sub Join() Handles PanSelectJoin.MouseLeftButtonUp
+        Dim Code As String = MyMsgBoxInput(GetLang("LangPageLinkInputCode"), GetLang("LangPageLinkInputCodeDesc"),
+            HintText:=If(String.IsNullOrEmpty(LastCode), "", GetLang("LangPageLinkInputCodeHintLast")))
+        If Not String.IsNullOrEmpty(LastCode) AndAlso Code IsNot Nothing AndAlso Code = "" Then Code = LastCode
+        If Code Is Nothing Then Return
+        Join(Code)
+    End Sub
+    Public Sub JoinInternal(Code As String)
+        If Code Is Nothing Then Return
+
+        Dim ValidateResult = ValidateCodeFormat(Code)
+        If ValidateResult IsNot Nothing Then
+            Hint(ValidateResult, HintType.Red)
+            Return
+        End If
+        Code = FixCodeFormat(Code)
+        Logger.Info($"实际使用的邀请码：{Code}")
+
+        IsServerSide = False
+        ServerPort = Code.Substring(1, 4).Upper.ConvertRadix(16, 10)
+        NetworkName = Code.Substring(0, 11)
+        NetworkSecret = Code.Substring(12, 5)
+        If Code.Substring(20, 3) = "000" Then
+            DiscoverNodeID = -2
+        Else
+            DiscoverNodeID = Code.Substring(20, 3).Upper.ConvertRadix(16, 10)
+        End If
+        Logger.Info($"尝试加入房间，网络名 {NetworkName}，网络密码 {NetworkSecret}，端口 {ServerPort}，发现节点 {DiscoverNodeID}")
+
+        LastCode = Code
+        ChangeState(LinkStates.Loading)
+    End Sub
+    Public Shared Function ValidateCodeFormat(Code As String) As String
+        If Code Is Nothing Then Return GetLang("LangPageLinkCodeEmpty")
+        Code = FixCodeFormat(Code)
+
+        If Not (Code.Length >= 14 AndAlso Code(0) = "P"c AndAlso Code(5) = "-"c AndAlso Code(11) = "-"c) Then
+            If Code.StartsWithF("U/") Then
+                Return GetLang("LangPageLinkCodeNotPCL")
+            ElseIf Code.Length = 10 Then
+                Return GetLang("LangPageLinkCodeNotCE")
+            Else
+                Return GetLang("LangPageLinkCodeInvalid")
+            End If
+        End If
+
+        If Code.Length >= 23 AndAlso Code(17) = "-"c AndAlso
+            Val(Code.Substring(18, 2)) > INVITE_CODE_VERSION Then Return GetLang("LangPageLinkCodeOldVersion")
+        Return Nothing
+    End Function
+    Private Shared Function FixCodeFormat(Code As String) As String
+        Code = Code.Between("【", "】").Between("[", "]")
+        Code = Code.Upper.Replace("O", "0").Replace("I", "1")
+
+        If Code.Length >= 17 AndAlso (Code.Length < 23 OrElse (Code.Length >= 18 AndAlso Code(17) <> "-"c)) Then
+            Code = Code.Substring(0, 17) & "-0105E"
+        End If
+        Return Code
+    End Function
+
+    Public Shared Sub Join(Code As String)
+        If LinkState <> LinkStates.Waiting Then
+            Hint(GetLang("LangPageLinkHintAlreadyInRoom"), HintType.Red)
+        ElseIf FrmMain.PageCurrent = FormMain.PageType.Link Then
+            FrmLinkMain.JoinInternal(Code)
+        Else
+            AutoJoinCode = Code
+            FrmMain.PageChange(FormMain.PageType.Link, FormMain.PageSubType.LinkMain)
+        End If
+    End Sub
+
+    Private Shared AutoJoinCode As String = Nothing
+    Private Sub PanSelectJoin_Loaded() Handles PanSelectJoin.Loaded
+        If AutoJoinCode Is Nothing Then Return
+        If LinkState = LinkStates.Waiting Then JoinInternal(AutoJoinCode)
+        AutoJoinCode = Nothing
+    End Sub
+
+#End Region
+
+#Region "加载页面 (Loading | Failed)"
+
+    Private Sub SwitchToLoading(OldState As LinkStates)
+
+        Peers = Nothing
+        FailCount = 0
+
+        LinkLoader.Start(IsForceRestart:=True)
+
+        UpdateProgressBar(0)
+        LabLoadTitle.Text = If(IsServerSide, GetLang("LangPageLinkCreatingRoom"), GetLang("LangPageLinkJoiningRoom"))
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingInit"), GetLang("LangPageLinkFailBriefInit"))
+    End Sub
+
+    Private Sub SwitchToFailed(OldState As LinkStates)
+
+        LinkLoader.Cancel()
+        ProcessStop()
+
+        UpdateProgressBar(1)
+
+        LabLoadTitle.Text = FailReason
+        Dim Brief As String = LinkLoader.Error.GetDisplay(False)
+        Dim InnerEx As Exception = LinkLoader.Error
+        If InnerEx.Message.StartsWithF("$") Then Brief = InnerEx.Message
+        Do Until InnerEx.InnerException Is Nothing
+            InnerEx = InnerEx.InnerException
+            If InnerEx.Message.StartsWithF("$") Then Brief = InnerEx.Message
+        Loop
+        LabLoadDesc.Text = If(Brief.StartsWithF("$"), Brief.TrimStart("$"), LinkLoader.Error.GetDisplay(True))
+        Logger.Warn(LinkLoader.Error, LabLoadTitle.Text)
+    End Sub
+
+    Private Sub UpdateLoadingPage(Title As String, FailBrief As String)
+        If FailReason = FailBrief & GetLang("LangPageLinkFailSuffix") Then Return
+        FailReason = FailBrief & GetLang("LangPageLinkFailSuffix")
+        Logger.Info($"开始步骤：{Title}")
+        RunInUiWait(
+        Sub()
+            If FrmLinkMain Is Nothing OrElse Not FrmLinkMain.LabLoadDesc.IsLoaded Then Return
+            FrmLinkMain.LabLoadDesc.Text = Title
+        End Sub)
+    End Sub
+    Private FailReason As String = GetLang("LangPageLinkFailBriefInit")
+
+    Private Sub BtnLoadCancel_Click() Handles BtnLoadCancel.Click
+        ChangeState(LinkStates.Waiting)
+    End Sub
+
+    Private Sub CardLoad_MouseLeftButtonUp() Handles CardLoad.MouseLeftButtonUp
+        ChangeState(LinkStates.Loading)
+    End Sub
+
+    Private Sub UpdateProgressBar(Optional Value As Double = -1)
+        If Value = -1 Then Value = LinkLoader.Progress
+        Dim DisplayingProgress As Double = ColumnProgressA.Width.Value
+        If Math.Round(Value - DisplayingProgress, 3) = 0 Then Return
+        If DisplayingProgress <= Value Then
+            Dim NewProgress As Double = If(Value = 1, 1, DisplayingProgress +
+                (Value - DisplayingProgress) ^ 2 * 0.5)
+            AniStart({
+                AaGridLengthWidth(ColumnProgressA, NewProgress - ColumnProgressA.Width.Value, 200),
+                AaGridLengthWidth(ColumnProgressB, (1 - NewProgress) - ColumnProgressB.Width.Value, 200)
+            }, "Link Progress")
+        Else
+            ColumnProgressA.Width = New GridLength(Value, GridUnitType.Star)
+            ColumnProgressB.Width = New GridLength(1 - Value, GridUnitType.Star)
+            AniStop("Link Progress")
+        End If
+    End Sub
+    Private Sub CardLoad_SizeChanged() Handles CardLoad.SizeChanged
+        RectProgressClip.Rect = New Rect(0, 0, CardLoad.ActualWidth, 12)
+    End Sub
+
+#End Region
+
+#Region "完成页面 (Finished)"
+
+    Private Sub SwitchToFinished(OldState As LinkStates)
+
+        UpdatePanelVisibility()
+
+        If IsServerSide Then
+            LabFinishTitle.Text = GetLang("LangPageLinkFinishedCreateTitle")
+            LabFinishDesc.Text = GetLang("LangPageLinkFinishedCreateDesc", GetInviteCode())
+            BtnFinishExit.Text = GetLang("LangPageLinkBtnClose")
+            BtnFinishPing.ToolTip = GetLang("LangPageLinkToolTipNetPing")
+            BtnFinishCopy.Visibility = Visibility.Visible
+            Copy()
+
+            BtnFinishPort.Visibility = Visibility.Visible
+            LabFinishPort.Visibility = Visibility.Visible
+            BtnFinishIp.Visibility = Visibility.Collapsed
+            LabFinishIp.Visibility = Visibility.Collapsed
+            LabFinishPort.Text = ServerPort
+        Else
+            LabFinishTitle.Text = GetLang("LangPageLinkFinishTitle")
+            LabFinishDesc.Text = GetLang("LangPageLinkFinishedJoinDesc")
+            BtnFinishExit.Text = GetLang("LangPageLinkBtnLeave")
+            BtnFinishPing.ToolTip = GetLang("LangPageLinkToolTipHostPing")
+            BtnFinishCopy.Visibility = Visibility.Collapsed
+
+            BtnFinishPort.Visibility = Visibility.Collapsed
+            LabFinishPort.Visibility = Visibility.Collapsed
+            LabFinishIp.Text = ClientAddress
+            BtnFinishIp.Visibility = Visibility.Visible
+            LabFinishIp.Visibility = Visibility.Visible
+        End If
+        Update()
+    End Sub
+
+    Private Sub BtnFinishExit_Click() Handles BtnFinishExit.Click
+        TryExit(False, False)
+    End Sub
+
+    Public Function TryExit(Silent As Boolean, Closing As Boolean) As Boolean
+        If LinkState = LinkStates.Waiting OrElse LinkState = LinkStates.Failed Then Return False
+        If Not Silent Then
+            If IsServerSide AndAlso PeopleCount > 1 Then
+                If MyMsgBox(GetLang("LangPageLinkExitDialogContentWarn"), GetLang("LangPageLinkExitDialogTitle"), GetLang("LangDialogBtnOK"), GetLang("LangDialogBtnCancel"), IsWarn:=True) = 2 Then Return True
+            ElseIf Closing Then
+                If MyMsgBox(If(IsServerSide, GetLang("LangPageLinkExitDialogContentClose"), GetLang("LangPageLinkExitDialogContentLeave")), GetLang("LangPageLinkExitDialogTitle"), GetLang("LangDialogBtnOK"), GetLang("LangDialogBtnCancel")) = 2 Then Return True
+            End If
+        End If
+        ChangeState(LinkStates.Waiting)
+        Return False
+    End Function
+
+    Private Sub Copy() Handles BtnFinishCopy.Click
+        Dim CodeText As String = GetLang("LangPageLinkCopyInviteCode", GetInviteCode())
+        ClipboardSet(CodeText, False)
+        Settings.Set("LinkLastAutoJoinInviteCode", CodeText)
+        Hint(GetLang("LangPageLinkHintCopied"), HintType.Green)
+    End Sub
+    Private Function GetInviteCode() As String
+        Return $"{NetworkName}-{NetworkSecret}-{INVITE_CODE_VERSION.ToString.PadLeft(2, "0"c)}{ _
+            If(DiscoverNodeID = -1, 0, DiscoverNodeID).ConvertRadix(16).PadLeft(3, "0"c)}"
+    End Function
+
+    Private Sub BtnFinishIp_MouseLeftButtonUp(sender As Object, e As MouseButtonEventArgs) Handles BtnFinishIp.MouseLeftButtonUp
+        ClipboardSet(ClientAddress, False)
+        Hint(GetLang("LangPageLinkHintCopiedAddress"), HintType.Green)
+    End Sub
+
+#End Region
+
+    Private PathEasyTier As String = Paths.AppDataThenName & "EasyTier\"
+
+    Private IsServerSide As Boolean
+
+    Private ServerPort As Integer
+
+    Private ClientPort As Integer
+
+    Private RPCPort As Integer
+
+    Private ClientAddress As String = Nothing
+
+    Private DiscoverNodeID As Integer = -1
+
+    Private NetworkName As String, NetworkSecret As String
+
+#Region "加载"
+
+    Private WithEvents LinkLoader As New LoaderCombo(Of Integer)(GetLang("LangTitleLink"), {
+        New LoaderTask(Of Integer, Integer)(GetLang("LangPageLinkTaskConfig"), AddressOf InitConfig) With {.ProgressWeight = 8},
+        New LoaderTask(Of Integer, List(Of NetFile))(GetLang("LangPageLinkTaskPrepareDownload"), AddressOf InitPrepareDownload) With {.ProgressWeight = 2},
+        New LoaderDownload(GetLang("LangPageLinkTaskDownload"), New List(Of NetFile)) With {.ProgressWeight = 40},
+        New LoaderTask(Of Integer, Integer)(GetLang("LangPageLinkTaskLaunch"), AddressOf InitLaunch) With {.ProgressWeight = 50}
+    })
+
+    Private Sub InitConfig(Task As LoaderTask(Of Integer, Integer))
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingConfig"), GetLang("LangPageLinkFailBriefConfig"))
+
+        ServerLoader.WaitForExit(LoaderToSyncProgress:=Task)
+        If ServerConfig Is Nothing Then Throw New Exception(GetLang("LangPageLinkPanicConfigFail"))
+
+        Dim DisableReason = ServerConfig("Link")?("DisableReason2")?.ToString
+        If Not String.IsNullOrEmpty(DisableReason) Then Throw New Exception("$" & DisableReason)
+        If CType(ServerConfig("Link"), JObject).ContainsKey("MinVersionCode") AndAlso
+           VersionCode < ServerConfig("Link")("MinVersionCode").ToObject(Of Integer) Then
+            Throw New Exception("$" & GetLang("LangPageLinkCodeOldVersion"))
+        End If
+    End Sub
+
+    Private ServerVersion As Integer
+    Private Sub InitPrepareDownload(Task As LoaderTask(Of Integer, List(Of NetFile)))
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingArch"), GetLang("LangPageLinkFailBriefArch"))
+        Dim Architecture As String = GetType(String).Assembly.GetName().ProcessorArchitecture
+        Select Case Architecture
+            Case ProcessorArchitecture.X86
+                Architecture = "i686"
+            Case ProcessorArchitecture.Amd64
+                Architecture = "x86_64"
+            Case ProcessorArchitecture.Arm
+                Architecture = "arm64"
+            Case Else
+                Logger.Warn($"CPU 是不支持的 {Architecture} 架构，这可能会导致联机模块无法启动！")
+                Architecture = "arm64"
+        End Select
+        Logger.Info($"CPU 架构：{Architecture}")
+        Telemetry("联机开始")
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingVersion"), GetLang("LangPageLinkFailBriefVersion"))
+        If Not (FileUtils.Exists(PathEasyTier & "联机模块 CLI.exe") AndAlso FileUtils.Exists(PathEasyTier & "联机模块.exe") AndAlso
+                FileUtils.Exists(PathEasyTier & "Packet.dll")) Then
+            Settings.Set("LinkEasyTierVersion", -1)
+        End If
+        Dim LocalVersion As Integer = Settings.Get(Of Integer)("LinkEasyTierVersion")
+        ServerVersion = ServerConfig("Link")("EasyTierVersion")
+        Dim RequiredFiles As New List(Of NetFile)
+        Logger.Info($"EasyTier 本地版本：{LocalVersion}，需求版本：{ServerVersion}")
+        If LocalVersion < ServerVersion Then
+            RequiredFiles.Add(New NetFile(
+                ServerConfig("Link")("Downloads").Select(Function(UrlEntry) UrlEntry.ToString.Replace("{arch}", Architecture)),
+                PathEasyTier & "EasyTier.zip",
+                New FileChecker With {.MinSize = 1024 * 1024 * 2}))
+        End If
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingDownload"), GetLang("LangPageLinkFailBriefDownload"))
+        Task.Output = RequiredFiles
+    End Sub
+
+    Private Sub InitLaunch(Task As LoaderTask(Of Integer, Integer))
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingExtract"), GetLang("LangPageLinkFailBriefExtract"))
+        If FileUtils.Exists(PathEasyTier & "EasyTier.zip") Then
+
+            Dim ExtractPath As String = RequestTaskTempFolder()
+            FileUtils.ExtractToDirectory(PathEasyTier & "EasyTier.zip", ExtractPath,
+                progressHandler:=Sub(Percentage) Task.Progress = Percentage * 0.05)
+            DirectoryUtils.Copy(DirectoryUtils.EnumerateDirectories(ExtractPath, True).First, PathEasyTier)
+
+            FileUtils.Move(PathEasyTier & "easytier-core.exe", PathEasyTier & "联机模块.exe")
+            FileUtils.Move(PathEasyTier & "easytier-cli.exe", PathEasyTier & "联机模块 CLI.exe")
+
+            FileUtils.Delete(PathEasyTier & "EasyTier.zip")
+            Settings.Set("LinkEasyTierVersion", ServerVersion)
+        End If
+        Task.Progress = 0.07
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingNodes"), GetLang("LangPageLinkFailBriefNodes"))
+        Dim RawPeers As List(Of String)
+        Dim CustomPeers As String = Settings.Get(Of String)("LinkCustomPeer")
+        If String.IsNullOrWhiteSpace(CustomPeers) Then
+            If DiscoverNodeID = -2 AndAlso Not IsServerSide Then
+                Panic(GetLang("LangPageLinkPanicNoCustomPeer"), "$" & GetLang("LangPageLinkPanicNoCustomPeerDetail"))
+                Return
+            End If
+            RawPeers = GetTargetPeers()
+        Else
+            If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then Hint(GetLang("LangPageLinkHintCustomPeerMismatch"))
+            RawPeers = CustomPeers.Split("，,".ToCharArray).Select(Function(p) p.Trim).Where(Function(p) Not String.IsNullOrEmpty(p)).ToList()
+            Logger.Info($"使用自定义节点：{CustomPeers}")
+        End If
+        Task.Progress = 0.13
+
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingStart"), GetLang("LangPageLinkFailBriefStart"))
+        Dim FreePorts = FindFreePorts(5, ServerPort)
+        ClientPort = FreePorts(0)
+        RPCPort = FreePorts(1)
+        Dim ListenersPort As Integer = FreePorts(2)
+
+        Dim Arguments As String = ServerConfig("Link")("Argument")
+        Arguments += $" --network-name={NetworkName} --network-secret={NetworkSecret} --listeners {ListenersPort} --rpc-portal {RPCPort} --private-mode true"
+        Dim HostName = If(IsServerSide, "Server-", "Client-") & Identify.GetStableHashCode().ConvertRadix(36).TrimStart("-"c).EnsureLength("0", 6)
+        If IsServerSide Then
+            Arguments += $" -i 10.114.114.114 --hostname={HostName} --tcp-whitelist={ServerPort} --udp-whitelist={ServerPort}"
+        Else
+            Arguments += $" -d --hostname={HostName} --tcp-whitelist=0 --udp-whitelist=0"
+
+            ClientAddress = $"localhost:{ClientPort}"
+            Arguments += $" --port-forward tcp://[{IPAddress.IPv6Loopback}]:{ClientPort}/10.114.114.114:{ServerPort}"
+            Arguments += $" --port-forward udp://[{IPAddress.IPv6Loopback}]:{ClientPort}/10.114.114.114:{ServerPort}"
+            Arguments += $" --port-forward tcp://{IPAddress.Loopback}:{ClientPort}/10.114.114.114:{ServerPort}"
+            Arguments += $" --port-forward udp://{IPAddress.Loopback}:{ClientPort}/10.114.114.114:{ServerPort}"
+        End If
+        For Each Peer As String In RawPeers
+            Arguments += $" -p=""{Peer}"""
+        Next
+        If Settings.Get(Of Integer)("LinkLatencyMode") = 1 Then Arguments += " --latency-first"
+
+        ProcessStart(Arguments)
+        Task.Progress = 0.15
+
+        Dim TimeoutCounter As Integer = 0
+        Do
+            Thread.Sleep(500)
+
+            CheckCrash()
+            RefreshPeerLoader.WaitForExit(IsForceRestart:=True)
+
+            Dim Ping = GetPeerPing()
+            If Ping > 0 Then
+                Logger.Info($"已与目标建立连接，当前 Ping 为 {Ping:0.0}ms")
+                Telemetry("联机成功", "Server", IsServerSide, "NAT", NATType)
+                Exit Do
+            End If
+
+            Dim LastProgress = Task.Progress
+            Dim PeerCount As Integer = If(Peers Is Nothing, -1, Peers.Where(Function(p) p.Ping > 0).Count)
+            Select Case PeerCount
+                Case -1
+                    Task.Progress = (Task.Progress + 0.02).Clamp(0.15, 0.25)
+                Case 0
+                    UpdateLoadingPage(GetLang("LangPageLinkLoadingNode"), GetLang("LangPageLinkFailBriefNode"))
+                    Task.Progress = (Task.Progress + 0.02).Clamp(If(IsServerSide, 0.5, 0.3), If(IsServerSide, 0.95, 0.5))
+                Case Else
+                    UpdateLoadingPage(GetLang("LangPageLinkLoadingHost"), GetLang("LangPageLinkFailBriefHost"))
+                    Task.Progress = (Task.Progress + 0.02).Clamp(Math.Min(0.45 + PeerCount * 0.05, 0.65), 0.95)
+            End Select
+
+            If LastProgress <> Task.Progress Then
+                TimeoutCounter = 0
+            ElseIf TimeoutCounter < 30 * 2 Then
+                TimeoutCounter += 1
+            Else
+                Select Case PeerCount
+                    Case -1
+                        Panic(GetLang("LangPageLinkPanicCannotStart"), GetLang("LangPageLinkRecentLog", LogHistory.Join(vbCrLf)))
+                    Case 0
+                        Panic(GetLang("LangPageLinkPanicCannotConnectNode"), GetLang("LangPageLinkCheckNetworkGood"))
+                    Case Else
+                        Panic(GetLang("LangPageLinkPanicCannotConnectHost"), GetLang("LangPageLinkCannotConnectHostReasons"))
+                End Select
+            End If
+        Loop Until Task.IsCanceled
+        If Task.IsCanceled Then Throw New OperationCanceledException
+
+        If IsServerSide Then Return
+        UpdateLoadingPage(GetLang("LangPageLinkLoadingOptimize"), GetLang("LangPageLinkFailBriefOptimize"))
+        Task.Progress = 0.999
+        For i = 1 To 50
+            Dim Server = GetTargetPeer()
+            If Server IsNot Nothing AndAlso Not Server.Relay AndAlso Server.Ping < 100 Then Return
+            If Task.IsCanceled Then Throw New OperationCanceledException
+            Thread.Sleep(100)
+        Next
+    End Sub
+
+    Private Function GetTargetPeers() As List(Of String)
+        Dim FinalPeers As New List(Of String), FinalDiscoverID As Integer = -1
+        Dim FallbackDiscoverID = ServerConfig("Link")("DiscoverPeerId").ToObject(Of Integer)
+        Dim FallbackDiscoverAddress As String = ServerConfig("Link")("DiscoverPeer").ToString()
+        Try
+
+            Dim RawNodes As JObject
+            Dim IsFallbackRawList As Boolean = False
+            Try
+                RawNodes = NetRequestByClient("https://uptime.easytier.cn/api/nodes?page=1&per_page=1000", RequireJson:=True).DeserializeJson()
+            Catch exx As Exception
+                Logger.Warn(exx, "从源站获取节点列表失败，将使用 CDN 缓存")
+                RawNodes = NetRequestByClientRetry("https://easytier.meloong.com/?page=1&per_page=1000", RequireJson:=True).DeserializeJson()
+                IsFallbackRawList = True
+            End Try
+
+            Dim Nodes As New List(Of JObject)
+            Dim BlackList As List(Of String) = ServerConfig("Link")("PeersBlackList").Select(Function(p) p.ToString).ToList()
+            For Each Node As JObject In RawNodes("data")("items")
+
+                Dim ID = Node("id").ToObject(Of Integer)
+                If Not Node("is_active").ToObject(Of Boolean) OrElse Not Node("is_approved").ToObject(Of Boolean) Then Continue For
+                If ID = DiscoverNodeID Then GoTo ForcedPass
+                If ID = FallbackDiscoverID Then Continue For
+                If BlackList.Contains(Node("address").ToString) Then Continue For
+                If Node("usage_percentage").ToObject(Of Double) = 0 AndAlso RandomInteger(1, 100) <> 1 Then Continue For
+
+                Dim Tags = Node("tags").Select(Function(t) t.ToString).ToList
+                If Not Tags.Contains("国内") OrElse Not Tags.Contains("MC中继") Then Continue For
+
+ForcedPass:
+                Dim Load As Double = Node("usage_percentage").ToObject(Of Double)
+                Load *= 110 - Node("health_percentage_24h").ToObject(Of Double)
+                Node("load") = Load
+                Nodes.Add(Node)
+            Next
+
+            If Not IsFallbackRawList Then
+                Nodes = Nodes.OrderBy(Function(n) n("load").ToObject(Of Double)).ToList()
+            Else
+                Nodes = Nodes.Shuffle().ToList()
+            End If
+
+            Dim SelectedDiscoverNode As JObject = Nothing
+            If DiscoverNodeID = -1 Then
+                SelectedDiscoverNode = Nodes.FirstOrDefault(Function(n) Not n("allow_relay").ToObject(Of Boolean))
+            ElseIf DiscoverNodeID > 0 Then
+                SelectedDiscoverNode = Nodes.FirstOrDefault(Function(n) n("id").ToObject(Of Integer) = DiscoverNodeID)
+                If SelectedDiscoverNode Is Nothing Then
+                    Logger.Warn($"未找到 ID {DiscoverNodeID} 的发现节点")
+                    Panic(GetLang("LangPageLinkPanicRoomExpired"), GetLang("LangPageLinkAskRecreateRoom"))
+                    Throw New OperationCanceledException
+                End If
+            End If
+            If SelectedDiscoverNode Is Nothing Then
+                SelectedDiscoverNode = New JObject From {{"address", FallbackDiscoverAddress}, {"id", FallbackDiscoverID}}
+                Logger.Warn("将使用回退发现节点")
+            End If
+            FinalPeers.Add(SelectedDiscoverNode("address").ToString())
+            FinalDiscoverID = SelectedDiscoverNode("id").ToObject(Of Integer)
+            Logger.Info($"发现节点：{SelectedDiscoverNode("address")} (ID: {FinalDiscoverID})")
+
+            If ModeDebug OrElse Not IsServerSide Then
+                Dim RelayCount As Integer = ServerConfig("Link")("RandomPeer").ToObject(Of Integer)
+                Dim RelayNodes = Nodes.Where(Function(n) n("allow_relay").ToObject(Of Boolean)).ToList()
+                If RelayNodes.Count < RelayCount Then Throw New Exception(GetLang("LangPageLinkPanicRelayCount", RelayCount, RelayNodes.Count))
+                FinalPeers.AddRange(RelayNodes.Take(RelayCount).Select(Function(n) n("address").ToString()))
+            End If
+        Catch ex As Exception
+            ex.ThrowIfCanceled()
+            Logger.Error(ex, "获取节点列表失败，联机质量可能受到影响", LogBehavior.Toast)
+            FinalPeers.AddRange(ServerConfig("Link")("Peers").Select(Function(p) p.ToString))
+            If FinalDiscoverID <= 0 Then
+                FinalPeers.Add(FallbackDiscoverAddress)
+                FinalDiscoverID = FallbackDiscoverID
+            End If
+        End Try
+
+        If CType(ServerConfig("Link"), JObject).ContainsKey("EnableForcedPeer") Then
+            FinalPeers.Add("tcp://mc1.easytier.cn:55558")
+            If FinalDiscoverID <= 0 Then FinalDiscoverID = 94
+        End If
+
+        FinalPeers.AddRange(ServerConfig("Link")("MandatoryPeers").Select(Function(p) p.ToString))
+
+        DiscoverNodeID = FinalDiscoverID
+        Return FinalPeers.Distinct.ToList
+    End Function
+
+#End Region
+
+#Region "进程与日志"
+
+    Private Shared ProcessCore As Process
+    Private Shared ProcessOutputHandle As AutoResetEvent, ProcessErrorHandle As AutoResetEvent
+
+    Public Shared Sub ProcessStop()
+        Try
+
+            For Each ProcessObject In Process.GetProcesses
+                If ProcessObject.Id = ProcessCore?.Id Then Continue For
+                If ProcessObject.ProcessName <> "联机模块" AndAlso ProcessObject.ProcessName <> "联机模块 CLI" Then Continue For
+                Try
+                    Logger.Info($"停止残留的联机模块，PID：{ProcessObject.Id}，进程名：{ProcessObject.ProcessName}")
+                    ProcessObject.Kill()
+                    ProcessObject.Close()
+                Catch exx As Exception
+                    Logger.Warn(exx, $"结束进程失败（{ProcessObject.ProcessName}，PID {ProcessObject.Id}）")
+                End Try
+            Next
+
+            If ProcessCore IsNot Nothing AndAlso Not ProcessCore.HasExited Then
+                Logger.Info($"停止所启动的联机模块，PID：{ProcessCore.Id}")
+                ProcessCore.Kill()
+                ProcessCore.Close()
+                ProcessCore = Nothing
+            End If
+
+            ProcessOutputHandle?.Dispose()
+            ProcessErrorHandle?.Dispose()
+        Catch ex As Exception
+            Logger.Warn(ex, "停止联机模块失败")
+        End Try
+    End Sub
+
+    Private Sub Panic(Brief As String, Detail As String)
+
+        If Detail.Contains("failed to listen on ") Then
+            Detail = GetLang("LangPageLinkPanicListenPortFailed", Detail)
+        End If
+
+        If LinkState = LinkStates.Loading Then
+            FailReason = Brief
+            LinkLoader.Failed(New Exception(Detail))
+        Else
+            MyMsgBox(Detail, GetLang("LangPageLinkErrorTitle", Brief), IsWarn:=True)
+            ChangeState(LinkStates.Waiting)
+            Telemetry("联机失败", "Exception", FilterUserName(Brief & "：" & Detail, "*"))
+        End If
+    End Sub
+
+    Private Sub ProcessStart(Arguments As String)
+        Dim Info = New ProcessStartInfo With {
+            .FileName = PathEasyTier & "联机模块.exe",
+            .Arguments = Arguments,
+            .UseShellExecute = False,
+            .CreateNoWindow = True,
+            .RedirectStandardError = True,
+            .RedirectStandardOutput = True,
+            .StandardOutputEncoding = Encoding.UTF8,
+            .StandardErrorEncoding = Encoding.UTF8
+        }
+        Logger.Info($"正在启动 EasyTier：{Arguments}")
+        ProcessCore = New Process With {.StartInfo = Info}
+        Dim LogLineHandler =
+        Sub(sender As Object, e As DataReceivedEventArgs, Handle As AutoResetEvent)
+            Try
+                If e.Data Is Nothing Then
+                    Handle.[Set]()
+                    Return
+                End If
+                ProcessLogLine(e.Data)
+            Catch unused As ObjectDisposedException
+            Catch ex As Exception
+                Logger.Warn(ex, "读取 EasyTier 信息失败")
+            End Try
+        End Sub
+        ProcessOutputHandle = New AutoResetEvent(False)
+        AddHandler ProcessCore.OutputDataReceived, Sub(sender, e) LogLineHandler(sender, e, ProcessOutputHandle)
+        ProcessErrorHandle = New AutoResetEvent(False)
+        AddHandler ProcessCore.ErrorDataReceived, Sub(sender, e) LogLineHandler(sender, e, ProcessErrorHandle)
+        ProcessCore.Start()
+        ProcessCore.BeginOutputReadLine()
+        ProcessCore.BeginErrorReadLine()
+    End Sub
+    Private Sub ProcessLogLine(Line As String)
+
+        Logger.Info(Line)
+        LogHistory.Enqueue(Line)
+        If LogHistory.Count >= 10 Then LogHistory.Dequeue()
+
+        If Line.ContainsIgnoreCase("new peer connection added") Then
+            Logger.Warn($"已建立连接：{If(Line.RegexSeek("(?<=remote_addr.+?"")[^""}]{3,}"), Line)}")
+            Update()
+        ElseIf Line.ContainsIgnoreCase("peer connection removed") Then
+            Logger.Warn($"已断开连接：{If(Line.RegexSeek("(?<=remote_addr.+?"")[^""}]{3,}"), Line)}")
+            Update()
+        End If
+    End Sub
+    Private LogHistory As New Queue(Of String)(10)
+
+#End Region
+
+#Region "CLI 节点信息获取"
+
+    Private Class Peer
+
+        Public ReadOnly Type As Types
+        Public Enum Types
+
+            Client
+
+            Server
+
+            Misc
+
+            Self
+        End Enum
+
+        Public ReadOnly Ping As Double
+
+        Public ReadOnly Name As String
+
+        Public ReadOnly Relay As Boolean
+
+        Public ReadOnly NATType As NATTypes
+
+        Public Sub New(Info As JObject)
+
+            Dim PeerName = Info("hostname").ToString
+            If Info("cost").ToString = "Local" Then
+                Type = Types.Self
+            ElseIf PeerName.StartsWithF("Client") Then
+                Type = Types.Client
+            ElseIf Info("ipv4") = "10.114.114.114" Then
+                Type = Types.Server
+            Else
+                Type = Types.Misc
+            End If
+
+            Double.TryParse(Info("lat_ms"), NumberStyles.Any, CultureInfo.InvariantCulture, Ping)
+            Name = PeerName
+            Relay = Info("cost").ToString.ContainsIgnoreCase("relay")
+            NATType = EnumUtils.FromString(Of NATTypes)(Info("nat_type"))
+        End Sub
+        Public Overrides Function ToString() As String
+            Return $"{Type} - {Name} - Ping {Ping:0.0}ms [中继? {Relay}] - NAT {NATType}"
+        End Function
+    End Class
+    Private Enum NATTypes
+
+        Unknown = 0
+        OpenInternet = 1
+        NoPAT = 2
+        FullCone = 3
+        Restricted = 4
+        PortRestricted = 5
+        Symmetric = 6
+        SymUdpFirewall = 7
+        SymmetricEasyInc = 8
+        SymmetricEasyDec = 9
+
+        Pending = 10
+    End Enum
+
+    Private Peers As List(Of Peer) = Nothing
+
+    Private NATType As NATTypes = NATTypes.Pending
+
+    Private RefreshPeerLoader As New LoaderTask(Of Integer, List(Of Peer))("EasyTier CLI", AddressOf RefreshPeer)
+    Private Sub RefreshPeer()
+        Try
+            Dim CliResult = ""
+
+            If Not CliResult.Contains("lat_ms") Then Throw New Exception("CLI 调用失败：" & vbCrLf & CliResult)
+            If GetUuid() Mod If(ModeDebug, 23, 103) = 0 Then Logger.Info($"CLI 输出抽样：{vbCrLf}{CliResult}")
+            Dim NewPeers As New List(Of Peer)
+            For Each Line As JObject In CType(CliResult.DeserializeJson(), JArray)
+                Try
+                    Dim Peer = New Peer(Line)
+                    If Peer.Type = Peer.Types.Self Then
+                        NATType = Peer.NATType
+                    Else
+                        NewPeers.Add(Peer)
+                    End If
+                Catch exx As Exception
+                    Logger.Warn(exx, $"错误的信息（{Line}）")
+                End Try
+            Next
+
+            Peers = NewPeers
+            FailCount = 0
+        Catch ex As Exception
+            Logger.Warn(ex, "获取节点信息失败")
+            If LinkState = LinkStates.Finished Then
+                FailCount += 1
+            If FailCount >= 4 Then Panic(GetLang("LangPageLinkPanicNodeInfoFail"), ex.Message)
+            End If
+        End Try
+    End Sub
+
+    Private FailCount As Integer = 0
+
+    Private Function GetPeerPing() As Double
+        Dim Peer = GetTargetPeer()
+        If Peer Is Nothing Then Return 0
+        Return Peer.Ping
+    End Function
+
+    Private Function GetTargetPeer() As Peer
+        If Peers Is Nothing Then Return Nothing
+        Dim Targets As IEnumerable(Of Peer)
+        If IsServerSide Then
+            Targets = Peers.Where(Function(p) p.Ping > 0)
+        Else
+            Targets = Peers.Where(Function(p) p.Type = Peer.Types.Server AndAlso p.Ping > 0)
+        End If
+        If Not Targets.Any Then Return Nothing
+
+        Dim MinPing = Targets.Min(Function(p) p.Ping)
+        Return Targets.First(Function(p) p.Ping = MinPing)
+    End Function
+
+    Private ReadOnly Property PeopleCount As Integer
+        Get
+            If Peers Is Nothing Then Return 0
+            Return Peers.Where(Function(p) p.Type <> Peer.Types.Misc).Count() + 1
+        End Get
+    End Property
+
+#End Region
+
+#Region "定时任务"
+
+    Private Sub StartTimerThread() Handles Me.Loaded
+        Static IsTimerStarted As Boolean = False
+        If IsTimerStarted Then Return
+        RunInNewThread(
+        Sub()
+            Dim Counter As Integer = 0
+            Do While True
+                Try
+                    Thread.Sleep(200)
+                    Counter += 200
+
+                    If Counter >= 1000 Then
+                        Counter = 0
+                        Update()
+                    End If
+
+                    If LinkState = LinkStates.Loading Then RunInUi(AddressOf UpdateProgressBar)
+                Catch ex As Exception
+                    Logger.Error(ex, "联机模块主时钟出错")
+                    Thread.Sleep(10000)
+                End Try
+            Loop
+        End Sub, "Link Timer")
+    End Sub
+
+    Private Sub Update() Handles Me.Loaded
+        If LinkState <> LinkStates.Finished Then Return
+
+        SyncLock RefreshPeerLoader.LockState
+            If RefreshPeerLoader.State <> LoadState.Loading Then RefreshPeerLoader.Start(IsForceRestart:=True)
+        End SyncLock
+
+        If FrmMain.PageCurrent = FormMain.PageType.Link Then
+            RunInUi(
+            Sub()
+
+                AniStart(AaRotateTransform(ImgFinishLogo, 500, 5000), "Link Logo Rotation")
+
+                Dim Ping As Double = GetPeerPing()
+                Dim Connecting As Boolean = Ping Mod 500 = 0 OrElse $"{Ping:0.0}" = "1.0" OrElse FailCount > 0
+                If Connecting Then
+                    LabFinishPing.Text = GetLang("LangPageLinkOptimizing")
+                Else
+                    LabFinishPing.Text = If(Ping >= 10, GetLang("LangPageLinkPingMs", $"{Ping:0}"), GetLang("LangPageLinkPingMs", $"{Ping:0.0}"))
+                End If
+
+                LabFinishPlayer.Text = GetLang("LangPageLinkPlayerCount", PeopleCount)
+
+                HintFinish.Visibility = Visibility.Collapsed
+                If IsServerSide Then Return
+                If Connecting Then Return
+
+                Dim Server As Peer = GetTargetPeer()
+                If Server Is Nothing Then Return
+                If Server.Relay Then
+                    If NATType >= NATTypes.Symmetric AndAlso Server.NATType >= NATTypes.Symmetric Then
+                        HintFinish.Text = GetLang("LangPageLinkHintNetBothBad")
+                    ElseIf NATType >= NATTypes.Symmetric Then
+                        HintFinish.Text = GetLang("LangPageLinkHintNetYourBad")
+                    ElseIf Server.NATType >= NATTypes.Symmetric Then
+                        HintFinish.Text = GetLang("LangPageLinkHintNetHostBad")
+                    Else
+                        HintFinish.Text = GetLang("LangPageLinkHintNetEitherBad")
+                    End If
+                    If String.IsNullOrWhiteSpace(Settings.Get(Of String)("LinkCustomPeer")) Then
+                        HintFinish.Text &= GetLang("LangPageLinkHintRelayCommunity")
+                    Else
+                        HintFinish.Text &= GetLang("LangPageLinkHintRelayCustom")
+                    End If
+                    HintFinish.Visibility = Visibility.Visible
+                    HintFinish.Theme = MyHint.Themes.Yellow
+                    Return
+                End If
+
+                If NATType >= NATTypes.PortRestricted Then Return
+                If Server.NATType < NATTypes.PortRestricted Then Return
+                Dim OtherPlayers = Peers.Where(Function(p) p.Type = Peer.Types.Client).ToList()
+                If Not OtherPlayers.Any() Then Return
+                If OtherPlayers.Any(Function(p) p.Relay) Then Return
+                If OtherPlayers.All(Function(p) p.NATType < NATTypes.PortRestricted) Then Return
+                HintFinish.Visibility = Visibility.Visible
+                HintFinish.Theme = MyHint.Themes.Blue
+                HintFinish.Text = GetLang("LangPageLinkHintBetterHost")
+            End Sub)
+        End If
+
+        CheckCrash()
+
+        If Not Peers.Any Then
+            Panic(GetLang("LangPageLinkPanicDisconnected"), GetLang("LangPageLinkCheckNetworkNormal"))
+            Return
+        End If
+        If Not IsServerSide AndAlso Not Peers.Any(Function(p) p.Type = Peer.Types.Server) Then
+            MyMsgBox(GetLang("LangPageLinkHostLeft"), GetLang("LangPageLinkEndTitle"))
+            ChangeState(LinkStates.Waiting)
+            Return
+        End If
+
+        If Not IsServerSide Then
+            Try
+                Static BroadcastSocket As New Socket(SocketType.Dgram, ProtocolType.Udp)
+                BroadcastSocket.SendTo(
+                    Encoding.UTF8.GetBytes("[MOTD]" & GetLang("LangPageLinkMotd") & "[/MOTD][AD]" & ClientPort & "[/AD]"),
+                    SocketFlags.None,
+                    New IPEndPoint(IPAddress.Loopback, 4445))
+            Catch ex As Exception
+                Logger.Warn(ex, "广播联机房间端口失败")
+            End Try
+        End If
+    End Sub
+
+    Private Sub CheckCrash()
+        If ProcessCore IsNot Nothing AndAlso Not ProcessCore.HasExited Then Return
+        Panic(GetLang("LangPageLinkPanicCrash"), GetLang("LangPageLinkRecentLog", LogHistory.Join(vbCrLf)))
+    End Sub
+
+#End Region
+
+End Class

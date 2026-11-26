@@ -1,0 +1,172 @@
+﻿Public Class PageOtherHelp
+    Implements IRefreshable
+
+#Region "初始化"
+
+    Private Sub PageOther_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
+        If Lang = "zh-CN" Then
+            HintSCOnly.Visibility = Visibility.Collapsed
+        Else
+            HintSCOnly.Visibility = Visibility.Visible
+        End If
+        PanBack.ScrollToHome()
+    End Sub
+
+    Private Sub PageOther_Inited(sender As Object, e As EventArgs) Handles Me.Initialized
+        PageLoaderInit(Load, PanLoad, PanBack, Nothing, HelpLoader, AddressOf HelpListLoad)
+    End Sub
+
+#End Region
+
+    Private Sub HelpListLoad(Loader As LoaderTask(Of Integer, List(Of HelpEntry)))
+        Try
+
+            PanList.Children.Clear()
+            PanBack.ScrollToHome()
+            Dim HelpItems = Loader.Output
+
+            Dim Types As New List(Of String)
+            For Each Item As HelpEntry In HelpItems
+                If BuildType = BuildTypes.Release AndAlso Not Item.ShowInPublic Then Continue For
+                If BuildType <> BuildTypes.Release AndAlso Not Item.ShowInSnapshot Then Continue For
+                For Each Type In Item.Types
+                    If Not Types.Contains(Type) Then Types.Add(Type)
+                Next
+            Next
+
+            If Types.Contains("指南") Then
+                Types.Remove("指南")
+                Types.Insert(0, "指南")
+            End If
+
+            For Each Type As String In Types
+
+                Dim TypeItems As New List(Of HelpEntry)
+                For Each Item In HelpItems
+                    If BuildType = BuildTypes.Release AndAlso Not Item.ShowInPublic Then Continue For
+                    If BuildType <> BuildTypes.Release AndAlso Not Item.ShowInSnapshot Then Continue For
+                    If Item.Types.Contains(Type) Then TypeItems.Add(Item)
+                Next
+
+                Dim NewCard As New MyCard With {.Title = Type, .Margin = New Thickness(0, 0, 0, 15), .SwapType = 11}
+                Dim NewStack As New StackPanel With {.Margin = New Thickness(20, MyCard.SwapedHeight, 18, 0), .VerticalAlignment = VerticalAlignment.Top, .RenderTransform = New TranslateTransform(0, 0), .Tag = TypeItems}
+                NewCard.Children.Add(NewStack)
+                NewCard.SwapControl = NewStack
+                If Type = "指南" Then
+                    MyCard.StackInstall(NewStack, 11, "指南")
+                Else
+                    NewCard.IsSwapped = True
+                End If
+                PanList.Children.Add(NewCard)
+            Next
+
+        Catch ex As Exception
+            Logger.Error(ex, "加载帮助列表 UI 失败")
+        End Try
+    End Sub
+
+    Public Shared Sub OnItemClick(Entry As HelpEntry)
+        Try
+            If Entry.IsEvent Then
+                CustomEvent.Raise(Entry.EventType, Entry.EventData)
+            Else
+                EnterHelpPage(Entry)
+            End If
+        Catch ex As Exception
+            Logger.Error(ex, "处理帮助项目点击时发生意外错误")
+        End Try
+    End Sub
+    Public Shared Sub EnterHelpPage(Location As String)
+        RunInThread(
+        Sub()
+            If Not HelpLoader.State = LoadState.Finished Then HelpLoader.WaitForExit(GetUuid)
+            Dim Entry As New HelpEntry(Location)
+            RunInUi(
+            Sub()
+                Dim FrmHelpDetail As New PageOtherHelpDetail
+                If FrmHelpDetail.Init(Entry) Then
+                    FrmMain.PageChange(New FormMain.PageStackData With {.Page = FormMain.PageType.HelpDetail, .Additional = {Entry, FrmHelpDetail}})
+                Else
+                    Logger.Warn("已取消进入帮助项目，这一般是由于 xaml 初始化失败，且用户在弹窗中手动放弃")
+                End If
+            End Sub)
+        End Sub)
+    End Sub
+    Public Shared Sub EnterHelpPage(Entry As HelpEntry)
+        RunInThread(
+        Sub()
+            If Not HelpLoader.State = LoadState.Finished Then HelpLoader.WaitForExit(GetUuid)
+            RunInUi(
+            Sub()
+                Dim FrmHelpDetail As New PageOtherHelpDetail
+                If FrmHelpDetail.Init(Entry) Then
+                    FrmMain.PageChange(New FormMain.PageStackData With {.Page = FormMain.PageType.HelpDetail, .Additional = {Entry, FrmHelpDetail}})
+                Else
+                    Logger.Warn("已取消进入帮助项目，这一般是由于 xaml 初始化失败，且用户在弹窗中手动放弃")
+                End If
+            End Sub)
+        End Sub)
+    End Sub
+
+    Public Sub SearchRun() Handles SearchBox.TextChanged
+        If String.IsNullOrWhiteSpace(SearchBox.Text) Then
+
+            AniStart({
+                 AaOpacity(PanSearch, -PanSearch.Opacity, 100),
+                 AaCode(
+                 Sub()
+                     PanSearch.Height = 0
+                     PanSearch.Visibility = Visibility.Collapsed
+                     PanList.Visibility = Visibility.Visible
+                 End Sub,, True),
+                 AaOpacity(PanList, 1 - PanList.Opacity, 150, 30)
+            }, "FrmOtherHelp Search Switch")
+        Else
+
+            Dim QueryList As New List(Of SearchEntry(Of HelpEntry))
+            For Each Entry As HelpEntry In HelpLoader.Output
+                If Not Entry.ShowInSearch OrElse (BuildType = BuildTypes.Release AndAlso Not Entry.ShowInPublic) Then Continue For
+                If Not Entry.ShowInSearch OrElse (BuildType <> BuildTypes.Release AndAlso Not Entry.ShowInSnapshot) Then Continue For
+                QueryList.Add(New SearchEntry(Of HelpEntry) With {
+                    .Item = Entry,
+                    .SearchSource = New List(Of SearchSource) From {
+                        New SearchSource(Entry.Title, 1),
+                        New SearchSource(Entry.Desc, 0.5),
+                        New SearchSource(Entry.Search, 1.5)
+                    }
+                })
+
+            Next
+
+            Dim SearchResult = Search(QueryList, SearchBox.Text, MaxBlurCount:=5, MinBlurSimilarity:=0.08)
+            PanSearchList.Children.Clear()
+            If Not SearchResult.Any() Then
+                PanSearch.Title = GetLang("LangPageVersionModSearchNoResult")
+                PanSearchList.Visibility = Visibility.Collapsed
+            Else
+                PanSearch.Title = GetLang("LangPageVersionModSearchResult")
+                For Each Result In SearchResult
+                    Dim Item = Result.Item.ToListItem
+                    If ModeDebug Then Item.Info = If(Result.AbsoluteRight, GetLang("LangPageOtherHelpSearchExactMatch"), "") & GetLang("LangPageOtherHelpSearchSimilarity") & Math.Round(Result.Similarity, 3) & "，" & Item.Info
+                    PanSearchList.Children.Add(Item)
+                Next
+                PanSearchList.Visibility = Visibility.Visible
+            End If
+
+            AniStart({
+                 AaOpacity(PanList, -PanList.Opacity, 100),
+                 AaCode(
+                 Sub()
+                     PanList.Visibility = Visibility.Collapsed
+                     PanSearch.Visibility = Visibility.Visible
+                     PanSearch.TriggerForceResize()
+                 End Sub,, True),
+                 AaOpacity(PanSearch, 1 - PanSearch.Opacity, 150, 30)
+            }, "FrmOtherHelp Search Switch")
+        End If
+    End Sub
+
+    Public Sub Refresh() Implements IRefreshable.Refresh
+        PageOtherLeft.RefreshHelp()
+    End Sub
+End Class

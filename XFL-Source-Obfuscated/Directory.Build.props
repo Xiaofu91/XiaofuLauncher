@@ -1,0 +1,6 @@
+<Project>
+  <!-- 让 MSBuild 从 NuGet 获取 .NET Framework 4.8 引用程序集（无需安装 Developer Pack） -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48' or '$(TargetFrameworkVersion)' == 'v4.8'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+  </ItemGroup>
+</Project>
