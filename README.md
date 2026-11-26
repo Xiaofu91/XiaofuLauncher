@@ -5,6 +5,7 @@
 ## 下载
 
 - `XiaofuLauncher.zip` —— 构建好的完整启动器，解压到任意目录，双击 `XiaofuLauncher.exe` 即可运行（需 .NET Framework 4.8）。
+- `XiaofuLauncher.exe` —— 仅主程序（不含 runtimes 等依赖文件）；完整运行请下载上面的 ZIP。
 
 ## 源码
 
